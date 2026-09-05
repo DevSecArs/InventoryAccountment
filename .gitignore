@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Виртуальные окружения
+.venv/
+venv/
+env/
+ENV/
+
+# Сборка и пакеты
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Тесты, покрытие и анализаторы
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.dmypy.json
+dmypy.json
+
+# Локальная конфигурация и секреты
+.env
+.env.*
+!.env.example
+!.env.*.example
+.envrc
+secrets/
+*.key
+*.pem
+
+# Локальные данные и резервные копии
+backups/
+dumps/
+volumes/
+.data/
+*.backup
+*.dump
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.db
+
+# Логи и временные файлы
+logs/
+*.log
+*.pid
+*.tmp
+*.swp
+tmp/
+temp/
+
+# IDE и редакторы
+.idea/
+.vscode/
+*.code-workspace
+
+# Файлы операционных систем
+.DS_Store
+Thumbs.db
+Desktop.ini
