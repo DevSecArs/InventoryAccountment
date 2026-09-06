@@ -4,17 +4,23 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import lru_cache
+from typing import Annotated
 
+from fastapi import Depends
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
+from app.config import settings
 
-DATABASE_URL_ENV = "DATABASE_URL"
+if sys.platform == "win32":
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,27 +28,19 @@ class Base(DeclarativeBase):
     """Базовый класс декларативных моделей приложения."""
 
 
-def get_database_url() -> str:
-    """Вернуть и проверить строку подключения из окружения."""
-    database_url = os.getenv(DATABASE_URL_ENV)
-    if not database_url:
-        raise RuntimeError(f"Переменная окружения {DATABASE_URL_ENV} не задана")
-
-    driver_name = make_url(database_url).drivername
-    if driver_name != "postgresql" and not driver_name.startswith("postgresql+"):
-        raise RuntimeError("DATABASE_URL должна указывать на PostgreSQL")
-    return database_url
-
-
 @lru_cache(maxsize=1)
 def get_engine() -> Engine:
-    """Создать единственный engine с проверкой соединения перед выдачей из пула."""
-    return create_engine(get_database_url(), pool_pre_ping=True)
+    """Создать единственный engine."""
+    return create_engine(
+        settings.DATABASE_URL,
+        pool_pre_ping=True,
+        echo=settings.APP_DEBUG,
+    )
 
 
 @lru_cache(maxsize=1)
 def get_session_factory() -> sessionmaker[Session]:
-    """Вернуть фабрику сессий, связанную с engine приложения."""
+    """Вернуть фабрику сессий."""
     return sessionmaker(
         bind=get_engine(),
         autoflush=False,
@@ -63,6 +61,15 @@ def session_scope() -> Iterator[Session]:
         raise
     finally:
         session.close()
+
+
+def get_db_session():
+    """Предоставить запросу транзакционную сессию PostgreSQL."""
+    with session_scope() as session:
+        yield session
+
+
+DatabaseSession = Annotated[Session, Depends(get_db_session)]
 
 
 def is_database_ready() -> bool:
