@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
@@ -82,12 +83,21 @@ class UnitResponse(BaseModel):
     id: str
     code: str
     name: str
-    archived_at: Optional[str] = None
-    created_at: str
-    updated_at: str
+    archived_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class UnitListResponse(BaseModel):
+    """Ответ со страницей единиц измерения."""
+
+    items: list[UnitResponse]
+    total: int
+    skip: int
+    limit: int
 
 
 # ==================== CRUD операции ====================

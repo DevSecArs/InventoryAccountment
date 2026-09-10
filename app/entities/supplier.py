@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
@@ -73,12 +74,21 @@ class SupplierResponse(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     address: Optional[str] = None
-    archived_at: Optional[str] = None
-    created_at: str
-    updated_at: str
+    archived_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class SupplierListResponse(BaseModel):
+    """Ответ со страницей поставщиков."""
+
+    items: list[SupplierResponse]
+    total: int
+    skip: int
+    limit: int
 
 
 def create_supplier(db: Session, supplier_data: SupplierCreate) -> Supplier:

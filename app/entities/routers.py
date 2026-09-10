@@ -8,7 +8,7 @@ from app.entities import supplier as supplier_service
 unit_router = APIRouter(prefix="/units", tags=["Units"])
 
 
-@unit_router.get("/", response_model=dict)
+@unit_router.get("/", response_model=unit_service.UnitListResponse)
 def get_units(
     db: DatabaseSession,
     skip: int = Query(0, ge=0),
@@ -60,7 +60,7 @@ def archive_unit(unit_id: str, db: DatabaseSession):
 material_router = APIRouter(prefix="/materials", tags=["Materials"])
 
 
-@material_router.get("/", response_model=dict)
+@material_router.get("/", response_model=material_service.MaterialListResponse)
 def get_materials(
     db: DatabaseSession,
     skip: int = Query(0, ge=0),
@@ -109,7 +109,7 @@ def archive_material(material_id: str, db: DatabaseSession):
 supplier_router = APIRouter(prefix="/suppliers", tags=["Suppliers"])
 
 
-@supplier_router.get("/", response_model=dict)
+@supplier_router.get("/", response_model=supplier_service.SupplierListResponse)
 def get_suppliers(
     db: DatabaseSession,
     skip: int = Query(0, ge=0),
