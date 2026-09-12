@@ -2,6 +2,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "../layouts/AppShell";
+import { MaterialPage } from "../features/catalogs/MaterialPage";
+import { SupplierPage } from "../features/catalogs/SupplierPage";
+import { UnitPage } from "../features/catalogs/UnitPage";
 import { DashboardPage } from "../pages/DashboardPage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { PlannedFeaturePage } from "../pages/PlannedFeaturePage";
@@ -23,9 +26,9 @@ export function App() {
         <Routes>
           <Route element={<AppShell />}>
             <Route index element={<DashboardPage />} />
-            <Route path="units" element={<PlannedFeaturePage feature="Единицы измерения" />} />
-            <Route path="materials" element={<PlannedFeaturePage feature="Материалы" />} />
-            <Route path="suppliers" element={<PlannedFeaturePage feature="Поставщики" />} />
+            <Route path="units" element={<UnitPage />} />
+            <Route path="materials" element={<MaterialPage />} />
+            <Route path="suppliers" element={<SupplierPage />} />
             <Route path="receipts" element={<PlannedFeaturePage feature="Поступления" />} />
             <Route path="reports" element={<PlannedFeaturePage feature="Отчёты" />} />
             <Route path="admin" element={<PlannedFeaturePage feature="Администрирование" />} />
