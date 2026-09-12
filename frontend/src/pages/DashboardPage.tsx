@@ -1,5 +1,8 @@
 import { ArrowRight, Boxes, ClipboardCheck, CircleAlert, Database, Truck } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+
+import { getLiveness, getReadiness } from "../api/health";
 
 const overviewItems = [
   { label: "Справочники", value: "3", detail: "Единицы, материалы, поставщики", icon: Boxes },
@@ -8,6 +11,9 @@ const overviewItems = [
 ];
 
 export function DashboardPage() {
+  const live = useQuery({ queryKey: ["health", "live"], queryFn: ({ signal }) => getLiveness(signal) });
+  const ready = useQuery({ queryKey: ["health", "ready"], queryFn: ({ signal }) => getReadiness(signal) });
+
   return (
     <div className="page-stack">
       <section className="page-heading">
@@ -45,16 +51,18 @@ export function DashboardPage() {
               <p className="eyebrow">Готовность</p>
               <h2>Состояние системы</h2>
             </div>
-            <span className="status-pill status-pill--neutral">Проверяется через API</span>
+            <span className={`status-pill ${live.isSuccess && ready.isSuccess ? "status-pill--active" : "status-pill--neutral"}`}>
+              {live.isPending || ready.isPending ? "Проверка…" : live.isSuccess && ready.isSuccess ? "Система готова" : "Требует внимания"}
+            </span>
           </div>
           <div className="service-list">
             <div className="service-row">
               <Database size={19} aria-hidden="true" />
-              <div><strong>PostgreSQL</strong><span>Состояние доступно в /health/ready</span></div>
+              <div><strong>PostgreSQL</strong><span>{ready.isPending ? "Проверяется" : ready.isSuccess ? "Принимает запросы" : "Недоступна"}</span></div>
             </div>
             <div className="service-row">
               <ClipboardCheck size={19} aria-hidden="true" />
-              <div><strong>HTTP API</strong><span>Состояние доступно в /health/live</span></div>
+              <div><strong>HTTP API</strong><span>{live.isPending ? "Проверяется" : live.isSuccess ? "Работает" : "Недоступен"}</span></div>
             </div>
           </div>
         </article>

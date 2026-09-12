@@ -221,6 +221,40 @@ tbody tr:hover { background: #fbfaf8; }
 .entity-form small { color: var(--color-danger); font-size: 11px; font-weight: 600; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .form-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px; }
+.feature-unavailable { display: flex; align-items: flex-start; gap: 13px; padding: 16px 18px; color: #63470d; background: #fff8e7; border: 1px solid #e5d3a9; border-radius: var(--radius-medium); }
+.feature-unavailable svg { flex: 0 0 auto; margin-top: 1px; }
+.feature-unavailable strong, .feature-unavailable p { display: block; margin: 0; }
+.feature-unavailable p { margin-top: 4px; color: #74591f; line-height: 1.5; }
+.workflow-panel, .filter-panel { padding: 24px; background: var(--color-surface-raised); border: 1px solid #d8d2c9; border-radius: var(--radius-medium); box-shadow: var(--shadow-soft); }
+.section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.section-heading h2 { margin: 4px 0 0; font-size: 22px; }
+.section-heading > svg { color: var(--color-accent-dark); }
+.workflow-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.workflow-step { display: flex; gap: 10px; padding: 14px; background: var(--color-surface); border: 1px solid #e2ddd6; border-radius: var(--radius-small); }
+.workflow-step > span { display: grid; place-items: center; flex: 0 0 26px; height: 26px; color: #071d1c; background: var(--color-accent); border-radius: 50%; font-size: 12px; font-weight: 800; }
+.workflow-step strong, .workflow-step p { display: block; margin: 0; }
+.workflow-step p { margin-top: 5px; color: var(--color-text-muted); font-size: 12px; line-height: 1.45; }
+.workflow-exception { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 13px; margin-top: 12px; padding: 14px; color: #7a1f18; background: #fff1ef; border-radius: var(--radius-small); }
+.workflow-exception strong, .workflow-exception p { margin: 0; }
+.workflow-exception p { margin-top: 4px; font-size: 12px; line-height: 1.45; }
+.disabled-control { max-width: 520px; opacity: 0.65; }
+.filter-panel fieldset { display: grid; gap: 18px; padding: 0; margin: 0; border: 0; }
+.report-filters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.report-filters label { display: grid; gap: 7px; color: var(--color-text-muted); font-size: 12px; font-weight: 700; }
+.report-filters input, .report-filters select { min-width: 0; min-height: 44px; padding: 9px 10px; color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-small); }
+.filter-panel fieldset .button { justify-self: start; }
+.admin-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.service-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 13px; padding: 18px; background: var(--color-surface-raised); border: 1px solid #d8d2c9; border-radius: var(--radius-medium); box-shadow: var(--shadow-soft); }
+.service-card p, .service-card strong { display: block; margin: 0; }
+.service-card p { color: var(--color-text-muted); font-size: 12px; }
+.service-card strong { margin-top: 4px; }
+.health-dot { width: 10px; height: 10px; border-radius: 50%; }
+.health-dot--ok { background: var(--color-success); box-shadow: 0 0 0 4px rgb(40 122 75 / 12%); }
+.health-dot--error { background: var(--color-danger); box-shadow: 0 0 0 4px rgb(180 35 24 / 10%); }
+.health-dot--unknown { background: #8a8177; box-shadow: 0 0 0 4px rgb(89 97 94 / 10%); }
+.admin-policy { display: flex; align-items: flex-start; gap: 14px; }
+.admin-policy h2, .admin-policy p { margin: 0; }
+.admin-policy p { margin-top: 5px !important; }
 
 @media (max-width: 900px) {
   .app-shell { grid-template-columns: 1fr; }
@@ -243,6 +277,9 @@ tbody tr:hover { background: #fbfaf8; }
   .catalog-toolbar, .search-form { align-items: stretch; flex-direction: column; max-width: none; }
   .checkbox-control { align-self: flex-start; }
   .form-grid { grid-template-columns: 1fr; }
+  .workflow-steps, .report-filters, .admin-grid { grid-template-columns: 1fr; }
+  .workflow-exception { grid-template-columns: auto 1fr; }
+  .workflow-exception .button { grid-column: 1 / -1; justify-self: start; }
   .modal-backdrop { align-items: end; padding: 0; }
   .modal { width: 100%; max-height: 92vh; border-radius: var(--radius-medium) var(--radius-medium) 0 0; }
 }
