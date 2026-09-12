@@ -7,17 +7,33 @@ React/TypeScript-интерфейс системы складского учёт
 
 ## Требования
 
-- Node.js `^20.19.0` или `>=22.12.0`;
-- pnpm `11.19.0` через Corepack или отдельную установку;
+- Node.js `>=22.13.0` с npm;
+- pnpm `11.19.0`;
 - HTTP API на `http://127.0.0.1:8000`.
 
 ## Установка и запуск
 
+Corepack может отсутствовать в установленной версии Node.js. Проверьте npm и
+один раз установите закреплённую версию pnpm:
+
+```powershell
+node --version
+npm --version
+npm install --global pnpm@11.19.0
+pnpm --version
+```
+
+После установки откройте новое окно PowerShell и выполните из корня проекта:
+
 ```powershell
 cd frontend
-corepack pnpm install --frozen-lockfile
-corepack pnpm dev
+pnpm install --frozen-lockfile
+pnpm dev
 ```
+
+Если `node` или `npm` не распознаётся, сначала установите Node.js `22.13` или
+новее и повторно откройте PowerShell. Актуальные способы установки pnpm
+опубликованы в [официальной инструкции](https://pnpm.io/installation).
 
 Откройте `http://127.0.0.1:5173`. Dev-сервер проксирует `/api` и `/health` на
 `http://127.0.0.1:8000`, поэтому отдельная настройка CORS для локального
@@ -30,12 +46,12 @@ corepack pnpm dev
 ## Проверки
 
 ```powershell
-corepack pnpm typecheck
-corepack pnpm test:run
-corepack pnpm build
+pnpm typecheck
+pnpm test:run
+pnpm build
 ```
 
-Команда `corepack pnpm quality` объединяет проверку типов и тесты. Результат
+Команда `pnpm quality` объединяет проверку типов и тесты. Результат
 production-сборки помещается в игнорируемый каталог `dist/`.
 
 ## Production

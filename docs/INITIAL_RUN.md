@@ -9,7 +9,7 @@
 
 - Docker Desktop с поддержкой Docker Compose;
 - Python 3.11 или новее и локальное виртуальное окружение `venv`;
-- Node.js `^20.19.0` или `>=22.12.0` и pnpm `11.19.0`;
+- Node.js `>=22.13.0` с npm и pnpm `11.19.0`;
 - PowerShell, открытый в корне репозитория.
 
 Проверить Docker можно командой:
@@ -97,10 +97,18 @@ Invoke-RestMethod http://127.0.0.1:8000/health/ready
 Не останавливая HTTP-сервер, откройте новое окно PowerShell и выполните:
 
 ```powershell
+node --version
+npm --version
+npm install --global pnpm@11.19.0
+pnpm --version
 cd frontend
-corepack pnpm install --frozen-lockfile
-corepack pnpm dev
+pnpm install --frozen-lockfile
+pnpm dev
 ```
+
+Установка pnpm через npm выполняется один раз. После неё может потребоваться
+закрыть и заново открыть PowerShell, чтобы команда появилась в `PATH`. Corepack
+для запуска проекта не требуется.
 
 Откройте `http://127.0.0.1:5173`. Локальный frontend проксирует запросы
 `/api` и `/health` на FastAPI по адресу `http://127.0.0.1:8000`.
