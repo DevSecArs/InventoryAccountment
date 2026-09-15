@@ -22,6 +22,27 @@ describe("apiRequest", () => {
     expect(new Headers(init.headers).get("X-Request-ID")).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  it("создаёт идентификатор запроса без crypto.randomUUID", async () => {
+    const getRandomValues = vi.fn((bytes: Uint8Array) => {
+      bytes.set(Array.from({ length: 16 }, (_, index) => index));
+      return bytes;
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "ok" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("crypto", { getRandomValues });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiRequest<{ status: string }>("/health/live")).resolves.toEqual({ status: "ok" });
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(new Headers(init.headers).get("X-Request-ID")).toBe("00010203-0405-4607-8809-0a0b0c0d0e0f");
+    expect(getRandomValues).toHaveBeenCalledOnce();
+  });
+
   it("сохраняет сообщение и request_id серверной ошибки", async () => {
     vi.stubGlobal(
       "fetch",
