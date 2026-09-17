@@ -116,6 +116,11 @@ def get_materials_by_unit(db: Session, unit_id: str) -> list[Material]:
     ).all()
 
 
+def has_materials_by_unit(db: Session, unit_id: str) -> bool:
+    """Проверить ссылки на единицу, включая архивированные материалы."""
+    return db.query(Material.id).filter(Material.unit_id == unit_id).first() is not None
+
+
 def get_materials(
     db: Session,
     skip: int = 0,
@@ -176,3 +181,19 @@ def archive_material(db: Session, material_id: str) -> Optional[Material]:
     db_material.archived_at = func.now()
     db.flush()
     return db_material
+
+
+def purge_archived_material(db: Session, material_id: str) -> bool:
+    """Безвозвратно удалить архивный материал.
+
+    Строки поступлений в текущей схеме ещё отсутствуют. После их появления
+    ограничение внешнего ключа не позволит удалить использованный материал.
+    """
+    material = db.query(Material).filter(
+        Material.id == material_id, Material.archived_at.is_not(None)
+    ).first()
+    if not material:
+        return False
+    db.delete(material)
+    db.flush()
+    return True

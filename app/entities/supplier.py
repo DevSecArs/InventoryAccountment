@@ -165,3 +165,18 @@ def archive_supplier(db: Session, supplier_id: str) -> Optional[Supplier]:
     db_supplier.archived_at = func.now()
     db.flush()
     return db_supplier
+
+
+def purge_archived_supplier(db: Session, supplier_id: str) -> bool:
+    """Безвозвратно удалить архивного поставщика.
+
+    После добавления поступлений целостность дополнительно защитит внешний ключ.
+    """
+    supplier = db.query(Supplier).filter(
+        Supplier.id == supplier_id, Supplier.archived_at.is_not(None)
+    ).first()
+    if not supplier:
+        return False
+    db.delete(supplier)
+    db.flush()
+    return True

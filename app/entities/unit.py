@@ -13,6 +13,15 @@ from sqlalchemy.orm import Session
 from app.postgresql import Base
 
 
+# Символы базовых и производных единиц СИ, а также единицы, разрешённые к
+# применению с СИ. Коды хранятся в принятом в приложении верхнем регистре.
+SI_UNIT_CODES = frozenset({
+    "M", "KG", "S", "A", "K", "MOL", "CD", "RAD", "SR", "HZ", "N", "PA", "J",
+    "W", "C", "V", "F", "OHM", "SIE", "WB", "T", "H", "LM", "LX", "BQ", "GY",
+    "SV", "KAT", "L", "MIN", "H", "D", "DEG", "EV", "DA",
+})
+
+
 # ==================== SQLAlchemy модель ====================
 
 class Unit(Base):
@@ -43,8 +52,11 @@ class UnitCreate(BaseModel):
     @field_validator("code")
     @classmethod
     def normalize_code(cls, v: str) -> str:
-        """Приводим код к верхнему регистру."""
-        return v.strip().upper()
+        """Нормализовать и проверить код по таблице единиц СИ."""
+        code = v.strip().upper()
+        if code not in SI_UNIT_CODES:
+            raise ValueError("Код не входит в таблицу единиц СИ")
+        return code
 
     @field_validator("name")
     @classmethod
@@ -64,7 +76,10 @@ class UnitUpdate(BaseModel):
     @classmethod
     def normalize_code(cls, v: Optional[str]) -> Optional[str]:
         if v is not None:
-            return v.strip().upper()
+            code = v.strip().upper()
+            if code not in SI_UNIT_CODES:
+                raise ValueError("Код не входит в таблицу единиц СИ")
+            return code
         return v
 
     @field_validator("name")
@@ -190,3 +205,17 @@ def archive_unit(db: Session, unit_id: str) -> Optional[Unit]:
     db_unit.archived_at = func.now()
     db.flush()
     return db_unit
+
+
+def purge_archived_unit(db: Session, unit_id: str) -> bool:
+    """Безвозвратно удалить архивную единицу без связанных материалов."""
+    unit = db.query(Unit).filter(Unit.id == unit_id, Unit.archived_at.is_not(None)).first()
+    if not unit:
+        return False
+    from app.entities.material import has_materials_by_unit
+
+    if has_materials_by_unit(db, unit_id):
+        raise ValueError("Нельзя удалить единицу, пока на неё ссылаются материалы")
+    db.delete(unit)
+    db.flush()
+    return True
