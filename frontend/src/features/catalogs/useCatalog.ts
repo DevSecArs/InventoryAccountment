@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import {
   archiveCatalog,
+  purgeCatalog,
   createCatalog,
   listCatalog,
   type CatalogRecord,
@@ -36,6 +37,11 @@ export function useCatalog<T extends CatalogRecord, TInput>(resource: CatalogRes
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [resource] }),
   });
 
+  const purgeMutation = useMutation({
+    mutationFn: (id: string) => purgeCatalog(resource, id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [resource] }),
+  });
+
   const applySearch = () => {
     setSkip(0);
     setSearch(searchInput.trim());
@@ -50,6 +56,7 @@ export function useCatalog<T extends CatalogRecord, TInput>(resource: CatalogRes
     query,
     saveMutation,
     archiveMutation,
+    purgeMutation,
     skip,
     limit: PAGE_SIZE,
     searchInput,

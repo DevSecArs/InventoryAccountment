@@ -98,3 +98,7 @@ export function updateCatalog<T, TInput>(resource: CatalogResource, id: string, 
 export function archiveCatalog(resource: CatalogResource, id: string) {
   return apiRequest<void>(`/api/v1/${resource}/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
+
+export function purgeCatalog(resource: CatalogResource, id: string) {
+  return apiRequest<void>(`/api/v1/${resource}/${encodeURIComponent(id)}/purge`, { method: "DELETE" });
+}

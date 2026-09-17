@@ -1,12 +1,27 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, apiRequest } from "./client";
+import { ApiError, apiRequest, setCsrfToken } from "./client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  setCsrfToken(undefined);
 });
 
 describe("apiRequest", () => {
+  it("передаёт cookie и CSRF-токен для изменяющего запроса", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    setCsrfToken("csrf-example");
+
+    await apiRequest("/api/v1/auth/me", { method: "PUT", body: JSON.stringify({ full_name: "Тест" }) });
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.credentials).toBe("include");
+    expect(new Headers(init.headers).get("X-CSRF-Token")).toBe("csrf-example");
+  });
+
   it("передаёт идентификатор запроса и читает JSON", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ status: "ok" }), {

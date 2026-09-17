@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.postgresql import is_database_ready, session_scope
-from app.entities.routers import unit_router, material_router, supplier_router
+from app.entities.routers import auth_router, unit_router, material_router, supplier_router
 
 
 logger = logging.getLogger(__name__)
@@ -160,7 +160,7 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
     return application
 
 
-app = create_app([unit_router, material_router, supplier_router])
+app = create_app([auth_router, unit_router, material_router, supplier_router])
 
 # Тип зависимости для будущих роутеров сущностей.
 DatabaseSession = Annotated[Session, Depends(get_db_session)]

@@ -10,6 +10,7 @@ import { CatalogLayout, type CatalogColumn } from "../../components/CatalogLayou
 import { Modal } from "../../components/Modal";
 import { formatDate, nullable } from "./formHelpers";
 import { useCatalog } from "./useCatalog";
+import { useAuth } from "../auth/AuthProvider";
 
 const schema = z.object({
   sku: z.string().trim().min(1, "Укажите артикул").max(50, "Не более 50 символов"),
@@ -21,6 +22,7 @@ const schema = z.object({
 type MaterialFormValues = z.infer<typeof schema>;
 
 export function MaterialPage() {
+  const { user } = useAuth();
   const catalog = useCatalog<Material, MaterialInput>("materials");
   const units = useQuery({
     queryKey: ["units", "options"],
@@ -41,6 +43,9 @@ export function MaterialPage() {
       await catalog.archiveMutation.mutateAsync(material.id).catch(() => undefined);
     }
   };
+  const purge = async (material: Material) => {
+    if (window.confirm(`Безвозвратно удалить архивный материал «${material.name}»?`)) await catalog.purgeMutation.mutateAsync(material.id).catch(() => undefined);
+  };
 
   return (
     <>
@@ -56,13 +61,15 @@ export function MaterialPage() {
         searchInput={catalog.searchInput}
         includeArchived={catalog.includeArchived}
         loading={catalog.query.isLoading || units.isLoading}
-        error={catalog.query.error ?? units.error ?? catalog.archiveMutation.error}
+        error={catalog.query.error ?? units.error ?? catalog.archiveMutation.error ?? catalog.purgeMutation.error}
         onSearchInput={catalog.setSearchInput}
         onSearch={catalog.applySearch}
         onIncludeArchived={catalog.setIncludeArchived}
         onCreate={() => setEditing(null)}
         onEdit={setEditing}
         onArchive={archive}
+        onPurge={purge}
+        canPurge={user?.role === "admin"}
         onPrevious={catalog.previous}
         onNext={catalog.next}
         onRetry={() => { catalog.query.refetch(); units.refetch(); }}

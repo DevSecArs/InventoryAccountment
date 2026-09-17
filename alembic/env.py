@@ -6,7 +6,7 @@ from alembic import context
 
 from app.config import settings
 from app.postgresql import Base
-from app.entities import material, supplier, unit  # noqa: F401
+from app.entities import auth, material, supplier, unit  # noqa: F401
 
 os.environ["PYTHONUTF8"] = "1"
 if sys.platform == "win32":

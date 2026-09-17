@@ -84,6 +84,18 @@ a { color: inherit; }
   font-size: 12px;
   font-weight: 700;
 }
+.profile-link { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; color: var(--color-text); text-decoration: none; font-size: 13px; font-weight: 700; }
+.text-button { padding: 8px; color: var(--color-accent-dark); background: transparent; border: 0; cursor: pointer; font-weight: 700; text-align: left; }
+.topbar-logout { color: var(--color-text-muted); }
+.auth-page { display: grid; min-height: 100vh; place-items: center; padding: 24px; background: var(--color-surface-main); }
+.auth-card, .profile-card { width: min(460px, 100%); background: var(--color-surface-raised); border: 1px solid var(--color-border); border-radius: var(--radius-medium); box-shadow: var(--shadow-soft); }
+.auth-card { padding: 28px; }
+.auth-card h1 { margin: 6px 0 10px; font-size: 32px; }
+.auth-card > p:not(.eyebrow) { margin: 0; color: var(--color-text-muted); line-height: 1.55; }
+.auth-card .entity-form { padding: 24px 0 8px; }
+.profile-card { overflow: hidden; }
+.profile-meta { display: flex; justify-content: space-between; gap: 16px; padding: 18px 22px; border-bottom: 1px solid var(--color-border); }
+.profile-meta span { color: var(--color-text-muted); font-size: 13px; }
 
 .icon-button {
   display: inline-grid;
@@ -274,6 +286,7 @@ tbody tr:hover { background: rgb(255 255 255 / 3%); }
 @media (max-width: 640px) {
   .topbar { padding: 0 14px; }
   .brand-subtitle, .environment-badge { display: none; }
+  .profile-link span, .topbar-logout { display: none; }
   .main-content { padding: 24px 16px 40px; }
   .page-heading { align-items: stretch; flex-direction: column; }
   .page-heading .button { align-self: flex-start; }

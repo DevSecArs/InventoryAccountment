@@ -22,6 +22,11 @@ export class ApiError extends Error {
 }
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+let csrfToken: string | undefined;
+
+export function setCsrfToken(token?: string) {
+  csrfToken = token;
+}
 
 function createRequestId(): string {
   const cryptoApi = globalThis.crypto;
@@ -51,6 +56,9 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   headers.set("X-Request-ID", requestId);
+  if (csrfToken && !["GET", "HEAD", "OPTIONS"].includes((init.method ?? "GET").toUpperCase())) {
+    headers.set("X-CSRF-Token", csrfToken);
+  }
 
   if (init.body !== undefined) {
     headers.set("Content-Type", "application/json");
@@ -59,6 +67,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
     headers,
+    credentials: "include",
     signal: init.signal,
   });
 

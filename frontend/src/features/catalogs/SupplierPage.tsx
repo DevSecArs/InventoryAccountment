@@ -9,6 +9,7 @@ import { CatalogLayout, type CatalogColumn } from "../../components/CatalogLayou
 import { Modal } from "../../components/Modal";
 import { formatDate, nullable } from "./formHelpers";
 import { useCatalog } from "./useCatalog";
+import { useAuth } from "../auth/AuthProvider";
 
 const schema = z.object({
   code: z.string().trim().min(1, "Укажите код").max(50, "Не более 50 символов"),
@@ -31,12 +32,16 @@ const columns: CatalogColumn<Supplier>[] = [
 ];
 
 export function SupplierPage() {
+  const { user } = useAuth();
   const catalog = useCatalog<Supplier, SupplierInput>("suppliers");
   const [editing, setEditing] = useState<Supplier | null | undefined>(undefined);
   const archive = async (supplier: Supplier) => {
     if (window.confirm(`Архивировать поставщика «${supplier.name}»?`)) {
       await catalog.archiveMutation.mutateAsync(supplier.id).catch(() => undefined);
     }
+  };
+  const purge = async (supplier: Supplier) => {
+    if (window.confirm(`Безвозвратно удалить архивного поставщика «${supplier.name}»?`)) await catalog.purgeMutation.mutateAsync(supplier.id).catch(() => undefined);
   };
 
   return (
@@ -53,13 +58,15 @@ export function SupplierPage() {
         searchInput={catalog.searchInput}
         includeArchived={catalog.includeArchived}
         loading={catalog.query.isLoading}
-        error={catalog.query.error ?? catalog.archiveMutation.error}
+        error={catalog.query.error ?? catalog.archiveMutation.error ?? catalog.purgeMutation.error}
         onSearchInput={catalog.setSearchInput}
         onSearch={catalog.applySearch}
         onIncludeArchived={catalog.setIncludeArchived}
         onCreate={() => setEditing(null)}
         onEdit={setEditing}
         onArchive={archive}
+        onPurge={purge}
+        canPurge={user?.role === "admin"}
         onPrevious={catalog.previous}
         onNext={catalog.next}
         onRetry={() => catalog.query.refetch()}

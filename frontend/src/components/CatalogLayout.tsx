@@ -1,4 +1,4 @@
-import { Archive, ChevronLeft, ChevronRight, Pencil, Plus, Search } from "lucide-react";
+import { Archive, ChevronLeft, ChevronRight, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 
 import type { CatalogRecord } from "../api/catalogs";
@@ -28,6 +28,8 @@ interface CatalogLayoutProps<T extends CatalogRecord> {
   onCreate: () => void;
   onEdit: (item: T) => void;
   onArchive: (item: T) => void;
+  onPurge?: (item: T) => void;
+  canPurge?: boolean;
   onPrevious: () => void;
   onNext: () => void;
   onRetry: () => void;
@@ -52,6 +54,8 @@ export function CatalogLayout<T extends CatalogRecord>({
   onCreate,
   onEdit,
   onArchive,
+  onPurge,
+  canPurge = false,
   onPrevious,
   onNext,
   onRetry,
@@ -112,6 +116,9 @@ export function CatalogLayout<T extends CatalogRecord>({
                           <button className="table-action" type="button" onClick={() => onEdit(item)} aria-label={`Изменить запись ${item.id}`}><Pencil size={17} /></button>
                           <button className="table-action table-action--danger" type="button" onClick={() => onArchive(item)} aria-label={`Архивировать запись ${item.id}`}><Archive size={17} /></button>
                         </>
+                      )}
+                      {item.archived_at && canPurge && onPurge && (
+                        <button className="table-action table-action--danger" type="button" onClick={() => onPurge(item)} aria-label={`Удалить архивную запись ${item.id}`}><Trash2 size={17} /></button>
                       )}
                     </td>
                   </tr>

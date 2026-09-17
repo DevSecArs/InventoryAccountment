@@ -8,10 +8,12 @@ import {
   Ruler,
   Settings,
   Truck,
+  UserRound,
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useAuth } from "../features/auth/AuthProvider";
 
 const navigation = [
   { to: "/", label: "Обзор", icon: Gauge, end: true },
@@ -25,6 +27,8 @@ const navigation = [
 
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <div className="app-shell">
@@ -46,6 +50,10 @@ export function AppShell() {
           <span className="brand-subtitle">InventoryAccountment</span>
         </div>
         <div className="environment-badge">Локальная среда</div>
+        <NavLink className="profile-link" to="/profile" aria-label="Открыть личный кабинет">
+          <UserRound size={18} aria-hidden="true" /><span>{user?.full_name}</span>
+        </NavLink>
+        <button className="text-button topbar-logout" type="button" onClick={() => { logout().finally(() => navigate("/login")); }}>Выйти</button>
       </header>
 
       <aside className={`sidebar${menuOpen ? " sidebar--open" : ""}`}>
