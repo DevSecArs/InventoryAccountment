@@ -31,6 +31,11 @@ export interface UnitInput {
   name: string;
 }
 
+export interface SiUnitOption {
+  code: string;
+  name: string;
+}
+
 export interface Material extends CatalogRecord {
   sku: string;
   name: string;
@@ -79,6 +84,10 @@ function queryString(params: CatalogListParams) {
 
 export function listCatalog<T>(resource: CatalogResource, params: CatalogListParams, signal?: AbortSignal) {
   return apiRequest<Page<T>>(`/api/v1/${resource}/?${queryString(params)}`, { signal });
+}
+
+export function listSiUnitOptions(signal?: AbortSignal) {
+  return apiRequest<SiUnitOption[]>("/api/v1/units/si-options", { signal });
 }
 
 export function createCatalog<T, TInput>(resource: CatalogResource, input: TInput) {

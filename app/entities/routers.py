@@ -67,6 +67,15 @@ def update_profile(payload: auth_service.ProfileUpdate, db: DatabaseSession, use
 unit_router = APIRouter(prefix="/units", tags=["Units"])
 
 
+@unit_router.get("/si-options", response_model=list[unit_service.SiUnitOption])
+def get_si_unit_options(user: auth_service.User = auth_service.CurrentUser):
+    """Вернуть фиксированный перечень единиц, доступных для создания."""
+    return [
+        {"code": code, "name": name}
+        for code, name in sorted(unit_service.SI_UNITS.items(), key=lambda item: item[1])
+    ]
+
+
 @unit_router.get("/", response_model=unit_service.UnitListResponse)
 def get_units(
     db: DatabaseSession,

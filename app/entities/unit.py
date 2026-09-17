@@ -13,13 +13,20 @@ from sqlalchemy.orm import Session
 from app.postgresql import Base
 
 
-# Символы базовых и производных единиц СИ, а также единицы, разрешённые к
-# применению с СИ. Коды хранятся в принятом в приложении верхнем регистре.
-SI_UNIT_CODES = frozenset({
-    "M", "KG", "S", "A", "K", "MOL", "CD", "RAD", "SR", "HZ", "N", "PA", "J",
-    "W", "C", "V", "F", "OHM", "SIE", "WB", "T", "H", "LM", "LX", "BQ", "GY",
-    "SV", "KAT", "L", "MIN", "H", "D", "DEG", "EV", "DA",
-})
+# Единый справочник: базовые и производные единицы СИ и разрешённые к
+# применению с СИ. Пользователь выбирает запись из этого списка, а не задаёт
+# собственные код и наименование.
+SI_UNITS = {
+    "M": "Метр", "KG": "Килограмм", "S": "Секунда", "A": "Ампер",
+    "K": "Кельвин", "MOL": "Моль", "CD": "Кандела", "RAD": "Радиан",
+    "SR": "Стерадиан", "HZ": "Герц", "N": "Ньютон", "PA": "Паскаль",
+    "J": "Джоуль", "W": "Ватт", "C": "Кулон", "V": "Вольт", "F": "Фарад",
+    "OHM": "Ом", "SIE": "Сименс", "WB": "Вебер", "T": "Тесла", "H": "Генри",
+    "LM": "Люмен", "LX": "Люкс", "BQ": "Беккерель", "GY": "Грей",
+    "SV": "Зиверт", "KAT": "Катал", "L": "Литр", "MIN": "Минута",
+    "D": "Сутки", "DEG": "Градус", "EV": "Электронвольт",
+}
+SI_UNIT_CODES = frozenset(SI_UNITS)
 
 
 # ==================== SQLAlchemy модель ====================
@@ -47,7 +54,7 @@ class UnitCreate(BaseModel):
     """Схема для создания единицы измерения."""
 
     code: str = Field(..., min_length=1, max_length=50, description="Уникальный код")
-    name: str = Field(..., min_length=1, max_length=200, description="Полное наименование")
+    name: str | None = Field(default=None, max_length=200, description="Игнорируется: имя берётся из справочника СИ")
 
     @field_validator("code")
     @classmethod
@@ -57,14 +64,6 @@ class UnitCreate(BaseModel):
         if code not in SI_UNIT_CODES:
             raise ValueError("Код не входит в таблицу единиц СИ")
         return code
-
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("Наименование не может быть пустым")
-        return v.strip()
-
 
 class UnitUpdate(BaseModel):
     """Схема для обновления единицы измерения."""
@@ -115,6 +114,13 @@ class UnitListResponse(BaseModel):
     limit: int
 
 
+class SiUnitOption(BaseModel):
+    """Допустимая для создания единица из справочника СИ."""
+
+    code: str
+    name: str
+
+
 # ==================== CRUD операции ====================
 
 def create_unit(db: Session, unit_data: UnitCreate) -> Unit:
@@ -124,10 +130,7 @@ def create_unit(db: Session, unit_data: UnitCreate) -> Unit:
     if existing:
         raise ValueError(f"Единица измерения с кодом '{unit_data.code}' уже существует")
 
-    db_unit = Unit(
-        code=unit_data.code,
-        name=unit_data.name,
-    )
+    db_unit = Unit(code=unit_data.code, name=SI_UNITS[unit_data.code])
     db.add(db_unit)
     db.flush()
     return db_unit
