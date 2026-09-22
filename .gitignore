@@ -21,6 +21,8 @@ pip-wheel-metadata/
 .coverage
 .coverage.*
 htmlcov/
+reports/
+.pnpm-store/
 .tox/
 .nox/
 .hypothesis/

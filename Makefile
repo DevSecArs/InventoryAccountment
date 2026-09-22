@@ -11,7 +11,7 @@ ENV_FILE := .env
 COMPOSE := docker compose --project-name inventory-accountment --env-file $(ENV_FILE) -f docker-compose.yaml
 endif
 
-.PHONY: setup run up down migrate check-test-environment
+.PHONY: setup run up down migrate test check-test-environment
 
 setup:
 	@python --version
@@ -58,3 +58,13 @@ ifeq ($(TEST),1)
 else
 	@uv run --frozen alembic upgrade head
 endif
+
+test:
+ifeq ($(TEST),1)
+	@$(MAKE) check-test-environment TEST=1
+	@$(COMPOSE) run --rm app alembic upgrade head
+	@$(COMPOSE) run --rm app pytest
+else
+	@uv run --frozen pytest
+endif
+	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile && pnpm test:run'

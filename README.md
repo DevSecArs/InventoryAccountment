@@ -96,8 +96,10 @@ make down TEST=1
 из `frontend/pnpm-lock.yaml`. Существующие `.env` и `.env.test` не
 перезаписываются. `make up` собирает образ и ожидает healthcheck сервисов,
 `make migrate` применяет Alembic-миграции к выбранному окружению. Команды
-`test`, `quality`, `verify`, backup/restore и CI добавляются следующими
-задачами и пока отсутствуют.
+`make test TEST=1` применяет миграции к изолированной БД, запускает backend- и
+frontend-тесты и формирует игнорируемые Git отчёты JUnit, XML и HTML coverage
+в `reports/`. Команды `quality`, `verify`, backup/restore и CI добавляются
+следующими задачами.
 
 Для реализации потребуются Git, GNU Make, Python и Docker с Compose. Точные версии и зависимости должны быть закреплены при создании каркаса приложения. На Windows команды предполагается выполнять в WSL2 с Docker Desktop.
 

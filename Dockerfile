@@ -24,6 +24,19 @@ ENV PATH="/app/.venv/bin:$PATH" \
 RUN groupadd --system app && useradd --system --gid app --create-home app
 WORKDIR /app
 COPY --from=builder --chown=app:app /app /app
+RUN mkdir /app/reports && chown app:app /app/reports
 USER app
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+FROM builder AS test-builder
+
+COPY tests ./tests
+RUN uv sync --frozen --extra dev
+
+FROM runtime AS test
+
+USER root
+COPY --from=test-builder --chown=app:app /app/.venv /app/.venv
+COPY --from=test-builder --chown=app:app /app/tests /app/tests
+USER app

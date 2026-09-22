@@ -17,6 +17,5 @@ dumps
 build
 dist
 frontend
-tests
 docs
 tmp
