@@ -8,7 +8,7 @@
 ## Что потребуется
 
 - Docker Desktop с поддержкой Docker Compose;
-- Python 3.11 или новее и локальное виртуальное окружение `venv`;
+- Python 3.11 и `uv 0.5.29` (команда `make setup` установит его при отсутствии);
 - Node.js `>=22.13.0` с npm и pnpm `11.19.0`;
 - PowerShell, открытый в корне репозитория.
 
@@ -18,22 +18,39 @@
 docker compose version
 ```
 
-## 1. Установить зависимости
+## 1. Подготовить изолированное окружение
 
-Если окружение уже создано, установите проект из корня репозитория:
+Для безопасной проверки изменений используйте тестовый режим. Он создаёт
+отсутствующий `.env.test` по безопасному примеру, устанавливает
+Python-зависимости строго из `uv.lock` и frontend-зависимости из
+`pnpm-lock.yaml`:
 
-```powershell
-venv\Scripts\python.exe -m pip install .
+```bash
+make setup TEST=1
 ```
 
-Если `venv` отсутствует, сначала установите Python 3.11+ и создайте её:
+## 2. Запустить тестовый Docker-контур
 
-```powershell
-py -3.11 -m venv venv
-venv\Scripts\python.exe -m pip install .
+```bash
+make up TEST=1
+make migrate TEST=1
 ```
 
-## 2. Создать локальную конфигурацию
+Тестовая PostgreSQL не публикуется наружу. API доступен на
+`http://127.0.0.1:8001`; проверьте его командами:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8001/health/live
+Invoke-RestMethod http://127.0.0.1:8001/health/ready
+```
+
+После проверки удалите только временные ресурсы тестового контура:
+
+```bash
+make down TEST=1
+```
+
+## 3. Создать обычную локальную конфигурацию
 
 Создайте `.env` из примера. Он игнорируется Git, поэтому локальные параметры
 и пароли не попадут в репозиторий.
@@ -42,10 +59,10 @@ venv\Scripts\python.exe -m pip install .
 Copy-Item .env.example .env
 ```
 
-Не коммитьте `.env` и не используйте учебный пароль `postgres` вне локальной
-разработки.
+Не коммитьте `.env` и не используйте примерный пароль `change-me-local` вне
+локальной разработки.
 
-## 3. Запустить PostgreSQL
+## 4. Запустить обычную PostgreSQL
 
 В отдельном окне PowerShell выполните:
 
@@ -57,24 +74,24 @@ docker compose -f docker-compose.yaml ps
 Сервис `db` публикует PostgreSQL на `127.0.0.1:5433`. Данные хранятся в томе
 `postgres_data`; обычная остановка контейнера том не удаляет.
 
-## 4. Запустить HTTP-сервер
+## 5. Запустить HTTP-сервер
 
 Перед первым запуском API примените миграцию схемы:
 
 ```powershell
-venv\Scripts\python.exe -m alembic upgrade head
+make migrate
 ```
 
 Проверить текущую ревизию можно командой:
 
 ```powershell
-venv\Scripts\python.exe -m alembic current
+uv run --frozen alembic current
 ```
 
 Затем в корне репозитория выполните:
 
 ```powershell
-venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+make run
 ```
 
 После запуска доступны:
@@ -92,7 +109,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health/ready
 
 Ожидаемый ответ успешной проверки — `status: ok`.
 
-## 5. Запустить веб-интерфейс
+## 6. Запустить веб-интерфейс
 
 Не останавливая HTTP-сервер, откройте новое окно PowerShell и выполните:
 
@@ -123,8 +140,9 @@ pnpm dev
 1. Начальная миграция создаёт только модели уже реализованных справочников:
    единицы измерения, материалы и поставщики. Поступления, очередь, отчёты и
    связанные с ними таблицы пока не реализованы.
-2. `Makefile` отсутствует, поэтому предусмотренные проектом команды
-   `make setup`, `make run`, `make migrate` и `make verify` сейчас недоступны.
+2. Пока реализованы только `setup`, `run`, `up`, `down` и `migrate`.
+   Команды проверки качества, тестов и `make verify` добавляются следующими
+   задачами и не имитируют успешную проверку.
 
 ## Диагностика ошибки отсутствующей таблицы
 
@@ -136,7 +154,7 @@ pnpm dev
 миграцию командой:
 
 ```powershell
-venv\Scripts\python.exe -m alembic upgrade head
+make migrate
 ```
 
 Затем перезапустите HTTP-сервер и повторите запрос к API.
@@ -146,8 +164,8 @@ Alembic использует тот же параметр `DATABASE_URL` из `.
 проверьте, что запускаете её после установки зависимостей из корня репозитория:
 
 ```powershell
-venv\Scripts\python.exe -m pip install .
-venv\Scripts\python.exe -m alembic upgrade head
+make setup
+make migrate
 ```
 
 ## Остановка
