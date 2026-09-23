@@ -67,8 +67,8 @@ endif
 test:
 ifeq ($(TEST),1)
 	@$(MAKE) check-test-environment TEST=1
-	@$(COMPOSE) run --rm app alembic upgrade head
-	@$(COMPOSE) run --rm app pytest
+	@$(COMPOSE) run --rm --user root app alembic upgrade head
+	@$(COMPOSE) run --rm --user root app pytest
 else
 	@uv run --frozen pytest
 endif
@@ -77,7 +77,7 @@ endif
 quality:
 ifeq ($(TEST),1)
 	@$(MAKE) check-test-environment TEST=1
-	@$(COMPOSE) run --rm app sh -c 'mkdir -p reports && ruff format --check --no-cache app tests scripts && ruff check --no-cache app tests scripts && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts && bandit -q -r app scripts -lll -f json -o reports/bandit.json && pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
+	@$(COMPOSE) run --rm --user root app sh -c 'mkdir -p reports && ruff format --check --no-cache app tests scripts && ruff check --no-cache app tests scripts && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts && bandit -q -r app scripts -lll -f json -o reports/bandit.json && pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
 else
 	@uv run --frozen ruff format --check --no-cache app tests scripts
 	@uv run --frozen ruff check --no-cache app tests scripts
