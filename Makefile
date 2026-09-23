@@ -16,7 +16,7 @@ ENV_FILE := .env
 COMPOSE := docker compose --project-name inventory-accountment --env-file $(ENV_FILE) -f docker-compose.yaml
 endif
 
-.PHONY: setup run up down migrate test quality mutation migration-check backup restore backup-restore-check check-test-environment
+.PHONY: setup run up down migrate test quality mutation migration-check backup restore backup-restore-check lock-check container-check verify check-test-environment check-test-project-clean
 
 setup:
 	@python --version
@@ -77,13 +77,14 @@ endif
 quality:
 ifeq ($(TEST),1)
 	@$(MAKE) check-test-environment TEST=1
-	@$(COMPOSE) run --rm app sh -c 'ruff format --check --no-cache app tests scripts && ruff check --no-cache app tests scripts && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts && bandit -q -r app scripts -lll && pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict -r /tmp/requirements.txt'
+	@$(COMPOSE) run --rm app sh -c 'mkdir -p reports && ruff format --check --no-cache app tests scripts && ruff check --no-cache app tests scripts && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts && bandit -q -r app scripts -lll -f json -o reports/bandit.json && pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
 else
 	@uv run --frozen ruff format --check --no-cache app tests scripts
 	@uv run --frozen ruff check --no-cache app tests scripts
 	@MYPY_CACHE_DIR=/tmp/mypy uv run --frozen mypy app tests scripts
-	@uv run --frozen bandit -q -r app scripts -lll
-	@uv run --frozen sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict -r /tmp/requirements.txt'
+	@mkdir -p reports
+	@uv run --frozen bandit -q -r app scripts -lll -f json -o reports/bandit.json
+	@uv run --frozen sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
 endif
 	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile && pnpm quality'
 
@@ -132,5 +133,52 @@ ifeq ($(TEST),1)
 	@$(COMPOSE) run --rm pg-tools sh /scripts/backup_restore_check.sh /backups
 else
 	@echo "Проверка backup/restore разрешена только с TEST=1" >&2
+	@exit 2
+endif
+
+lock-check:
+	@uv lock --check
+	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile'
+
+container-check:
+ifeq ($(TEST),1)
+	@$(MAKE) check-test-environment TEST=1
+	@set -eu; \
+	cleanup() { $(COMPOSE) down --volumes --remove-orphans; }; \
+	trap cleanup EXIT HUP INT TERM; \
+	$(COMPOSE) up --build --detach --wait; \
+	$(COMPOSE) run --rm app alembic upgrade head; \
+	$(COMPOSE) exec -T app python scripts/container_smoke.py; \
+	$(COMPOSE) ps; \
+	cleanup; \
+	trap - EXIT HUP INT TERM
+else
+	@echo "Контейнерная проверка разрешена только с TEST=1" >&2
+	@exit 2
+endif
+
+check-test-project-clean:
+	@$(MAKE) check-test-environment TEST=1
+	@test -z "$$($(COMPOSE) ps --all --quiet)" || (echo "Остались контейнеры тестового Compose-проекта" >&2; exit 2)
+	@test -z "$$(docker volume ls --filter label=com.docker.compose.project=inventory-accountment-test --quiet)" || (echo "Остались тома тестового Compose-проекта" >&2; exit 2)
+
+verify:
+ifeq ($(TEST),1)
+	@$(MAKE) check-test-environment TEST=1
+	@set -eu; \
+	cleanup() { $(COMPOSE) down --volumes --remove-orphans; }; \
+	trap cleanup EXIT HUP INT TERM; \
+	echo '==> Проверка lock-файлов'; $(MAKE) lock-check TEST=1; \
+	echo '==> Проверка качества'; $(MAKE) quality TEST=1; \
+	echo '==> Автоматические тесты'; $(MAKE) test TEST=1; \
+	echo '==> Мутационная проверка'; $(MAKE) mutation TEST=1; \
+	echo '==> Проверка миграций'; $(MAKE) migration-check TEST=1; \
+	echo '==> Проверка backup/restore'; $(MAKE) backup-restore-check TEST=1; \
+	echo '==> Контейнерный smoke-сценарий'; $(MAKE) container-check TEST=1; \
+	echo '==> Проверка очистки тестового проекта'; $(MAKE) check-test-project-clean TEST=1; \
+	echo '==> Проверка формата Git diff'; git diff --check; \
+	trap - EXIT HUP INT TERM
+else
+	@echo "Полный контур verify разрешён только с TEST=1" >&2
 	@exit 2
 endif
