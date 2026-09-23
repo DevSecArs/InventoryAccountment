@@ -132,6 +132,7 @@ endif
 backup-restore-check:
 ifeq ($(TEST),1)
 	@$(MAKE) check-test-environment TEST=1
+	@$(COMPOSE) run --rm app alembic upgrade head
 	@$(COMPOSE) run --rm pg-tools sh /scripts/backup_restore_check.sh /backups
 else
 	@echo "Проверка backup/restore разрешена только с TEST=1" >&2
