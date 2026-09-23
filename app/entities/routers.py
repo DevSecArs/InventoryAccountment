@@ -5,11 +5,68 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from app.config import settings
 from app.entities import auth as auth_service
 from app.entities import material as material_service
+from app.entities import receipt as receipt_service
 from app.entities import supplier as supplier_service
 from app.entities import unit as unit_service
 from app.postgresql import DatabaseSession
 
 auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
+receipt_router = APIRouter(prefix="/receipts", tags=["Receipts"])
+
+
+@receipt_router.post(
+    "/", response_model=receipt_service.ReceiptResponse, status_code=status.HTTP_201_CREATED
+)
+def create_receipt(
+    payload: receipt_service.ReceiptCreate,
+    db: DatabaseSession,
+    user: auth_service.User = auth_service.CsrfUser,
+) -> receipt_service.Receipt:
+    try:
+        return receipt_service.create_receipt(db, payload)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@receipt_router.get("/", response_model=receipt_service.ReceiptListResponse)
+def list_receipts(
+    db: DatabaseSession,
+    user: auth_service.User = auth_service.CurrentUser,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+) -> dict[str, Any]:
+    items, total = receipt_service.get_receipts(db, skip, limit)
+    return {"items": items, "total": total, "skip": skip, "limit": limit}
+
+
+@receipt_router.get("/{receipt_id}", response_model=receipt_service.ReceiptResponse)
+def read_receipt(
+    receipt_id: str, db: DatabaseSession, user: auth_service.User = auth_service.CurrentUser
+) -> receipt_service.Receipt:
+    receipt = receipt_service.get_receipt(db, receipt_id)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="Поступление не найдено")
+    return receipt
+
+
+@receipt_router.patch("/{receipt_id}", response_model=receipt_service.ReceiptResponse)
+def patch_receipt(
+    receipt_id: str,
+    payload: receipt_service.ReceiptUpdate,
+    db: DatabaseSession,
+    user: auth_service.User = auth_service.CsrfUser,
+) -> receipt_service.Receipt:
+    receipt = receipt_service.get_receipt(db, receipt_id)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="Поступление не найдено")
+    try:
+        return receipt_service.update_receipt(db, receipt, payload)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 def _set_session_cookie(response: Response, token: str) -> None:

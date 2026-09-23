@@ -20,6 +20,8 @@ TEMPORARY_DATABASE_PREFIX = "inventory_migration_"
 REQUIRED_TABLES = {
     "alembic_version",
     "materials",
+    "receipts",
+    "receipt_items",
     "suppliers",
     "units",
     "user_sessions",
@@ -32,8 +34,25 @@ REQUIRED_UNIQUE_INDEXES = {
     "user_sessions": "ix_user_sessions_token_hash",
     "users": "ix_users_login",
 }
+REQUIRED_INDEXES = {
+    "receipt_items": {"ix_receipt_items_material_id"},
+    "receipts": {"ix_receipts_status_received_at", "ix_receipts_supplier_received_at"},
+}
+REQUIRED_UNIQUE_CONSTRAINTS = {
+    "receipt_items": {"receipt_id", "material_id"},
+    "receipts": {"supplier_id", "document_number"},
+}
+REQUIRED_CHECK_CONSTRAINTS = {
+    "receipt_items": ("receipt_items_quantity_check", ("quantity > 0",)),
+    "receipts": (
+        "receipts_status_check",
+        ("draft", "queued", "processing", "posted", "failed"),
+    ),
+}
 REQUIRED_FOREIGN_KEYS = {
     "materials": ("unit_id", "units", "id", None),
+    "receipt_items": ("receipt_id", "receipts", "id", "CASCADE"),
+    "receipts": ("supplier_id", "suppliers", "id", None),
     "user_sessions": ("user_id", "users", "id", "CASCADE"),
 }
 
@@ -155,6 +174,34 @@ def _assert_schema(database_url: URL, expected_head: str) -> None:
             if index is None or not index.get("unique"):
                 raise RuntimeError(f"Нет уникального индекса {index_name} в таблице {table_name}")
 
+        for table_name, index_names in REQUIRED_INDEXES.items():
+            actual_index_names = {item["name"] for item in inspector.get_indexes(table_name)}
+            if not index_names <= actual_index_names:
+                raise RuntimeError(f"В таблице {table_name} отсутствуют обязательные индексы")
+
+        for table_name, columns in REQUIRED_UNIQUE_CONSTRAINTS.items():
+            constraints = inspector.get_unique_constraints(table_name)
+            if not any(set(item["column_names"]) == columns for item in constraints):
+                raise RuntimeError(f"В таблице {table_name} отсутствует уникальное ограничение")
+
+        for table_name, (constraint_name, required_fragments) in REQUIRED_CHECK_CONSTRAINTS.items():
+            check_constraints = inspector.get_check_constraints(table_name)
+            if not any(
+                item["name"] == constraint_name
+                and all(
+                    fragment
+                    in item["sqltext"]
+                    .replace("::numeric", "")
+                    .replace("::text", "")
+                    .replace("::character varying", "")
+                    for fragment in required_fragments
+                )
+                for item in check_constraints
+            ):
+                raise RuntimeError(
+                    f"В таблице {table_name} отсутствует обязательный check constraint"
+                )
+
         for table_name, expected_foreign_key in REQUIRED_FOREIGN_KEYS.items():
             column, referred_table, referred_column, ondelete = expected_foreign_key
             foreign_keys = inspector.get_foreign_keys(table_name)
@@ -167,7 +214,7 @@ def _assert_schema(database_url: URL, expected_head: str) -> None:
             ):
                 raise RuntimeError(f"Нет внешнего ключа {table_name}.{column}")
 
-        for table_name in REQUIRED_TABLES - {"alembic_version"}:
+        for table_name in ("materials", "suppliers", "units", "user_sessions", "users"):
             if inspector.get_check_constraints(table_name):
                 raise RuntimeError(f"Непредусмотренные check constraints в таблице {table_name}")
 
@@ -243,6 +290,33 @@ def _assert_authentication_tables_work(database_url: URL) -> None:
         engine.dispose()
 
 
+def _assert_receipt_tables_work(database_url: URL) -> None:
+    """Подтвердить работу новых связанных таблиц после обновления заполненной БД."""
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO receipts "
+                    "(id, supplier_id, document_number, received_at, status) "
+                    "VALUES ('receipt-1', 'supplier-1', 'DOC-1', CURRENT_TIMESTAMP, 'draft')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO receipt_items (id, receipt_id, material_id, quantity) "
+                    "VALUES ('receipt-item-1', 'receipt-1', 'material-1', 1.250)"
+                )
+            )
+            quantity = connection.execute(
+                text("SELECT quantity FROM receipt_items WHERE id = 'receipt-item-1'")
+            ).scalar_one()
+        if str(quantity) != "1.250":
+            raise RuntimeError("Таблица строк поступления не сохранила количество")
+    finally:
+        engine.dispose()
+
+
 def _upgrade(database_url: URL, revision: str) -> None:
     command.upgrade(_alembic_config(database_url), revision)
 
@@ -286,6 +360,7 @@ def _check_populated_database(base_url: URL, head: str, previous_revision: str) 
         _assert_schema(database_url, head)
         _assert_catalog_data_preserved(database_url)
         _assert_authentication_tables_work(database_url)
+        _assert_receipt_tables_work(database_url)
         _check_model_schema_match(database_url)
     finally:
         _drop_database(base_url, database_url)

@@ -6,7 +6,7 @@ from alembic import context
 
 from app.config import settings
 from app.postgresql import Base
-from app.entities import auth, material, supplier, unit  # noqa: F401
+from app.entities import auth, material, receipt, supplier, unit  # noqa: F401
 
 os.environ["PYTHONUTF8"] = "1"
 if sys.platform == "win32":
@@ -21,6 +21,7 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
@@ -32,6 +33,7 @@ def run_migrations_offline() -> None:
     with context.begin_transaction():
         context.run_migrations()
 
+
 def run_migrations_online() -> None:
     alembic_config = context.config.get_section(context.config.config_ini_section, {})
     connectable = engine_from_config(
@@ -40,11 +42,10 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()
+
 
 if context.is_offline_mode():
     run_migrations_offline()

@@ -91,7 +91,9 @@ endif
 mutation:
 ifeq ($(TEST),1)
 	@$(MAKE) check-test-environment TEST=1
+	@$(COMPOSE) run --rm app alembic upgrade head
 	@$(COMPOSE) run --rm -e PYTEST_ADDOPTS=--no-cov app mutmut run "*verify_password*"
+	@$(COMPOSE) run --rm -e PYTEST_ADDOPTS=--no-cov app python scripts/check_quantity_mutation.py
 else
 	@echo "Мутационная проверка разрешена только с TEST=1" >&2
 	@exit 2
