@@ -11,7 +11,7 @@ ENV_FILE := .env
 COMPOSE := docker compose --project-name inventory-accountment --env-file $(ENV_FILE) -f docker-compose.yaml
 endif
 
-.PHONY: setup run up down migrate test quality mutation check-test-environment
+.PHONY: setup run up down migrate test quality mutation migration-check check-test-environment
 
 setup:
 	@python --version
@@ -72,12 +72,12 @@ endif
 quality:
 ifeq ($(TEST),1)
 	@$(MAKE) check-test-environment TEST=1
-	@$(COMPOSE) run --rm app sh -c 'ruff format --check --no-cache app tests && ruff check --no-cache app tests && MYPY_CACHE_DIR=/tmp/mypy mypy app tests && bandit -q -r app -lll && pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict -r /tmp/requirements.txt'
+	@$(COMPOSE) run --rm app sh -c 'ruff format --check --no-cache app tests scripts && ruff check --no-cache app tests scripts && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts && bandit -q -r app scripts -lll && pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict -r /tmp/requirements.txt'
 else
-	@uv run --frozen ruff format --check --no-cache app tests
-	@uv run --frozen ruff check --no-cache app tests
-	@MYPY_CACHE_DIR=/tmp/mypy uv run --frozen mypy app tests
-	@uv run --frozen bandit -q -r app -lll
+	@uv run --frozen ruff format --check --no-cache app tests scripts
+	@uv run --frozen ruff check --no-cache app tests scripts
+	@MYPY_CACHE_DIR=/tmp/mypy uv run --frozen mypy app tests scripts
+	@uv run --frozen bandit -q -r app scripts -lll
 	@uv run --frozen sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict -r /tmp/requirements.txt'
 endif
 	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile && pnpm quality'
@@ -88,5 +88,14 @@ ifeq ($(TEST),1)
 	@$(COMPOSE) run --rm -e PYTEST_ADDOPTS=--no-cov app mutmut run "*verify_password*"
 else
 	@echo "Мутационная проверка разрешена только с TEST=1" >&2
+	@exit 2
+endif
+
+migration-check:
+ifeq ($(TEST),1)
+	@$(MAKE) check-test-environment TEST=1
+	@$(COMPOSE) run --rm app python scripts/migration_check.py
+else
+	@echo "Проверка миграций разрешена только с TEST=1" >&2
 	@exit 2
 endif
