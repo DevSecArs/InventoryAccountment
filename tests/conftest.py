@@ -30,12 +30,16 @@ def clean_database() -> Generator[None, None, None]:
     """Очищать все таблицы после миграций, не заменяя их create_all()."""
     with get_engine().begin() as connection:
         connection.execute(
-            text("TRUNCATE user_sessions, users, materials, suppliers, units CASCADE")
+            text(
+                "TRUNCATE receipt_items, receipts, user_sessions, users, materials, suppliers, units CASCADE"
+            )
         )
     yield
     with get_engine().begin() as connection:
         connection.execute(
-            text("TRUNCATE user_sessions, users, materials, suppliers, units CASCADE")
+            text(
+                "TRUNCATE receipt_items, receipts, user_sessions, users, materials, suppliers, units CASCADE"
+            )
         )
 
 
