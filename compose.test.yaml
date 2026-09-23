@@ -35,5 +35,22 @@ services:
       timeout: 5s
       retries: 12
 
+  pg-tools:
+    image: postgres:16.4-alpine
+    profiles: ["tools"]
+    environment:
+      APP_ENV: test
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backups:/backups
+      - ./scripts:/scripts:ro
+
 volumes:
   postgres_test_data:

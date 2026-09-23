@@ -90,6 +90,8 @@ make migrate TEST=1
 make quality TEST=1
 make mutation TEST=1
 make migration-check TEST=1
+make backup TEST=1
+make backup-restore-check TEST=1
 # Проверки здоровья: http://127.0.0.1:8001/health/live и /health/ready
 make down TEST=1
 ```
@@ -107,7 +109,16 @@ SAST, известные уязвимости зависимостей и fronte
 аутентификации только в изолированном контуре. `make migration-check TEST=1`
 создаёт отдельные временные БД и проверяет создание чистой схемы, обновление
 заполненной базы и round-trip последней миграции. Команды `verify`,
-backup/restore и CI добавляются следующими задачами.
+`container-check` и CI добавляются следующими задачами. `make backup` создаёт
+custom-дамп в игнорируемом `backups/` и выводит путь, UTC-время, SHA-256 и
+Alembic revision без реквизитов доступа. `make restore BACKUP=backups/<имя>.dump`
+проверяет метаданные и по умолчанию создаёт новую БД. Замена существующей БД
+возможна только при `RESTORE_EXISTING=1`, заданных `TARGET_DATABASE_URL`,
+`TARGET_DATABASE` и совпадающем `CONFIRM_TARGET_DATABASE`. Автоматическая
+`make backup-restore-check TEST=1` создаёт связанные тестовые данные, намеренно
+повреждает исходную тестовую БД, восстанавливает дамп в отдельную временную БД,
+сверяет связи, количество строк и версию схемы, затем удаляет временные БД и
+дампы своего запуска.
 
 Для реализации потребуются Git, GNU Make, Python и Docker с Compose. Точные версии и зависимости должны быть закреплены при создании каркаса приложения. На Windows команды предполагается выполнять в WSL2 с Docker Desktop.
 

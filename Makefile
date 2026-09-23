@@ -2,6 +2,11 @@ SHELL := /bin/sh
 
 TEST ?= 0
 UV_VERSION := 0.5.29
+BACKUP ?=
+TARGET_DATABASE ?=
+TARGET_DATABASE_URL ?=
+CONFIRM_TARGET_DATABASE ?=
+RESTORE_EXISTING ?= 0
 
 ifeq ($(TEST),1)
 ENV_FILE := .env.test
@@ -11,7 +16,7 @@ ENV_FILE := .env
 COMPOSE := docker compose --project-name inventory-accountment --env-file $(ENV_FILE) -f docker-compose.yaml
 endif
 
-.PHONY: setup run up down migrate test quality mutation migration-check check-test-environment
+.PHONY: setup run up down migrate test quality mutation migration-check backup restore backup-restore-check check-test-environment
 
 setup:
 	@python --version
@@ -97,5 +102,35 @@ ifeq ($(TEST),1)
 	@$(COMPOSE) run --rm app python scripts/migration_check.py
 else
 	@echo "Проверка миграций разрешена только с TEST=1" >&2
+	@exit 2
+endif
+
+backup:
+ifeq ($(TEST),1)
+	@$(MAKE) check-test-environment TEST=1
+endif
+	@$(COMPOSE) run --rm pg-tools sh /scripts/backup_restore.sh backup /backups
+
+restore:
+ifeq ($(TEST),1)
+	@$(MAKE) check-test-environment TEST=1
+endif
+	@test -n "$(BACKUP)" || (echo "Укажите BACKUP=backups/<имя>.dump" >&2; exit 2)
+	@case "$(BACKUP)" in backups/*.dump) ;; *) echo "BACKUP должен указывать на дамп в backups/" >&2; exit 2 ;; esac
+	@backup_name=$$(basename "$(BACKUP)"); \
+	$(COMPOSE) run --rm \
+		-e BACKUP_FILE="/backups/$$backup_name" \
+		-e TARGET_DATABASE="$(TARGET_DATABASE)" \
+		-e TARGET_DATABASE_URL="$(TARGET_DATABASE_URL)" \
+		-e CONFIRM_TARGET_DATABASE="$(CONFIRM_TARGET_DATABASE)" \
+		-e RESTORE_EXISTING="$(RESTORE_EXISTING)" \
+		pg-tools sh /scripts/backup_restore.sh restore
+
+backup-restore-check:
+ifeq ($(TEST),1)
+	@$(MAKE) check-test-environment TEST=1
+	@$(COMPOSE) run --rm pg-tools sh /scripts/backup_restore_check.sh /backups
+else
+	@echo "Проверка backup/restore разрешена только с TEST=1" >&2
 	@exit 2
 endif
