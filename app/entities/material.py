@@ -3,37 +3,40 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text, func
-from sqlalchemy.orm import Session, relationship
+from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
-from app.postgresql import Base
 from app.entities.unit import Unit, get_unit
+from app.postgresql import Base
 
 
 class Material(Base):
     __tablename__ = "materials"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    sku = Column(String(50), nullable=False, unique=True, index=True)
-    name = Column(String(200), nullable=False)
-    description = Column(Text, nullable=True)
-    unit_id = Column(String(36), ForeignKey("units.id"), nullable=False)
-    archived_at = Column(DateTime, nullable=True, default=None)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    sku: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unit_id: Mapped[str] = mapped_column(String(36), ForeignKey("units.id"), nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
-    unit = relationship("Unit", lazy="joined")
+    unit: Mapped[Unit] = relationship(lazy="joined")
 
 
 class MaterialCreate(BaseModel):
     sku: str = Field(..., min_length=1, max_length=50)
     name: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = None
+    description: str | None = None
     unit_id: str
 
     @field_validator("sku")
@@ -50,14 +53,14 @@ class MaterialCreate(BaseModel):
 
 
 class MaterialUpdate(BaseModel):
-    sku: Optional[str] = Field(None, min_length=1, max_length=50)
-    name: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = None
-    unit_id: Optional[str] = None
+    sku: str | None = Field(None, min_length=1, max_length=50)
+    name: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = None
+    unit_id: str | None = None
 
     @field_validator("sku")
     @classmethod
-    def normalize_sku(cls, v: Optional[str]) -> Optional[str]:
+    def normalize_sku(cls, v: str | None) -> str | None:
         if v is not None:
             return v.strip().upper()
         return v
@@ -67,9 +70,9 @@ class MaterialResponse(BaseModel):
     id: str
     sku: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     unit_id: str
-    archived_at: Optional[datetime] = None
+    archived_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -102,18 +105,18 @@ def create_material(db: Session, material_data: MaterialCreate) -> Material:
     return db_material
 
 
-def get_material(db: Session, material_id: str) -> Optional[Material]:
-    return db.query(Material).filter(
-        Material.id == material_id,
-        Material.archived_at.is_(None)
-    ).first()
+def get_material(db: Session, material_id: str) -> Material | None:
+    return (
+        db.query(Material)
+        .filter(Material.id == material_id, Material.archived_at.is_(None))
+        .first()
+    )
 
 
 def get_materials_by_unit(db: Session, unit_id: str) -> list[Material]:
-    return db.query(Material).filter(
-        Material.unit_id == unit_id,
-        Material.archived_at.is_(None)
-    ).all()
+    return (
+        db.query(Material).filter(Material.unit_id == unit_id, Material.archived_at.is_(None)).all()
+    )
 
 
 def has_materials_by_unit(db: Session, unit_id: str) -> bool:
@@ -126,7 +129,7 @@ def get_materials(
     skip: int = 0,
     limit: int = 100,
     include_archived: bool = False,
-    search: Optional[str] = None,
+    search: str | None = None,
 ) -> tuple[list[Material], int]:
     query = db.query(Material)
 
@@ -136,8 +139,7 @@ def get_materials(
     if search:
         search_pattern = f"%{search}%"
         query = query.filter(
-            (Material.sku.ilike(search_pattern)) |
-            (Material.name.ilike(search_pattern))
+            (Material.sku.ilike(search_pattern)) | (Material.name.ilike(search_pattern))
         )
 
     total = query.count()
@@ -145,7 +147,9 @@ def get_materials(
     return items, total
 
 
-def update_material(db: Session, material_id: str, material_data: MaterialUpdate) -> Optional[Material]:
+def update_material(
+    db: Session, material_id: str, material_data: MaterialUpdate
+) -> Material | None:
     db_material = get_material(db, material_id)
     if not db_material:
         return None
@@ -158,11 +162,15 @@ def update_material(db: Session, material_id: str, material_data: MaterialUpdate
             raise ValueError(f"Единица измерения с ID {update_dict['unit_id']} не найдена")
 
     if "sku" in update_dict:
-        existing = db.query(Material).filter(
-            Material.sku == update_dict["sku"],
-            Material.id != material_id,
-            Material.archived_at.is_(None),
-        ).first()
+        existing = (
+            db.query(Material)
+            .filter(
+                Material.sku == update_dict["sku"],
+                Material.id != material_id,
+                Material.archived_at.is_(None),
+            )
+            .first()
+        )
         if existing:
             raise ValueError(f"Материал с SKU '{update_dict['sku']}' уже существует")
 
@@ -173,7 +181,7 @@ def update_material(db: Session, material_id: str, material_data: MaterialUpdate
     return db_material
 
 
-def archive_material(db: Session, material_id: str) -> Optional[Material]:
+def archive_material(db: Session, material_id: str) -> Material | None:
     db_material = get_material(db, material_id)
     if not db_material:
         return None
@@ -189,9 +197,11 @@ def purge_archived_material(db: Session, material_id: str) -> bool:
     Строки поступлений в текущей схеме ещё отсутствуют. После их появления
     ограничение внешнего ключа не позволит удалить использованный материал.
     """
-    material = db.query(Material).filter(
-        Material.id == material_id, Material.archived_at.is_not(None)
-    ).first()
+    material = (
+        db.query(Material)
+        .filter(Material.id == material_id, Material.archived_at.is_not(None))
+        .first()
+    )
     if not material:
         return False
     db.delete(material)

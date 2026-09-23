@@ -1,4 +1,4 @@
-import { apiRequest } from "./client";
+import { apiRequest } from './client';
 
 export interface Page<T> {
   items: T[];
@@ -68,7 +68,7 @@ export interface SupplierInput {
   address?: string | null;
 }
 
-export type CatalogResource = "units" | "materials" | "suppliers";
+export type CatalogResource = 'units' | 'materials' | 'suppliers';
 
 function queryString(params: CatalogListParams) {
   const query = new URLSearchParams({
@@ -77,37 +77,55 @@ function queryString(params: CatalogListParams) {
     include_archived: String(params.includeArchived ?? false),
   });
   if (params.search?.trim()) {
-    query.set("search", params.search.trim());
+    query.set('search', params.search.trim());
   }
   return query.toString();
 }
 
-export function listCatalog<T>(resource: CatalogResource, params: CatalogListParams, signal?: AbortSignal) {
-  return apiRequest<Page<T>>(`/api/v1/${resource}/?${queryString(params)}`, { signal });
+export function listCatalog<T>(
+  resource: CatalogResource,
+  params: CatalogListParams,
+  signal?: AbortSignal,
+) {
+  return apiRequest<Page<T>>(`/api/v1/${resource}/?${queryString(params)}`, {
+    signal,
+  });
 }
 
 export function listSiUnitOptions(signal?: AbortSignal) {
-  return apiRequest<SiUnitOption[]>("/api/v1/units/si-options", { signal });
+  return apiRequest<SiUnitOption[]>('/api/v1/units/si-options', { signal });
 }
 
-export function createCatalog<T, TInput>(resource: CatalogResource, input: TInput) {
+export function createCatalog<T, TInput>(
+  resource: CatalogResource,
+  input: TInput,
+) {
   return apiRequest<T>(`/api/v1/${resource}/`, {
-    method: "POST",
+    method: 'POST',
     body: JSON.stringify(input),
   });
 }
 
-export function updateCatalog<T, TInput>(resource: CatalogResource, id: string, input: Partial<TInput>) {
+export function updateCatalog<T, TInput>(
+  resource: CatalogResource,
+  id: string,
+  input: Partial<TInput>,
+) {
   return apiRequest<T>(`/api/v1/${resource}/${encodeURIComponent(id)}`, {
-    method: "PUT",
+    method: 'PUT',
     body: JSON.stringify(input),
   });
 }
 
 export function archiveCatalog(resource: CatalogResource, id: string) {
-  return apiRequest<void>(`/api/v1/${resource}/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return apiRequest<void>(`/api/v1/${resource}/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
 }
 
 export function purgeCatalog(resource: CatalogResource, id: string) {
-  return apiRequest<void>(`/api/v1/${resource}/${encodeURIComponent(id)}/purge`, { method: "DELETE" });
+  return apiRequest<void>(
+    `/api/v1/${resource}/${encodeURIComponent(id)}/purge`,
+    { method: 'DELETE' },
+  );
 }

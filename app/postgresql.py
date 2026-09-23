@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from functools import lru_cache
 from typing import Annotated
@@ -63,7 +63,7 @@ def session_scope() -> Iterator[Session]:
         session.close()
 
 
-def get_db_session():
+def get_db_session() -> Generator[Session, None, None]:
     """Предоставить запросу транзакционную сессию PostgreSQL."""
     with session_scope() as session:
         yield session

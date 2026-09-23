@@ -14,9 +14,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.entities.routers import auth_router, material_router, supplier_router, unit_router
 from app.postgresql import is_database_ready, session_scope
-from app.entities.routers import auth_router, unit_router, material_router, supplier_router
-
 
 logger = logging.getLogger(__name__)
 REQUEST_ID_HEADER = "X-Request-ID"

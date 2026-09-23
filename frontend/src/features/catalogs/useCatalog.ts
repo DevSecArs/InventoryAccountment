@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 
 import {
   archiveCatalog,
@@ -9,26 +9,35 @@ import {
   type CatalogRecord,
   type CatalogResource,
   updateCatalog,
-} from "../../api/catalogs";
+} from '../../api/catalogs';
 
 const PAGE_SIZE = 20;
 
-export function useCatalog<T extends CatalogRecord, TInput>(resource: CatalogResource) {
+export function useCatalog<T extends CatalogRecord, TInput>(
+  resource: CatalogResource,
+) {
   const queryClient = useQueryClient();
   const [skip, setSkip] = useState(0);
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
   const [includeArchived, setIncludeArchivedState] = useState(false);
 
   const queryKey = [resource, { skip, search, includeArchived }];
   const query = useQuery({
     queryKey,
-    queryFn: ({ signal }) => listCatalog<T>(resource, { skip, limit: PAGE_SIZE, search, includeArchived }, signal),
+    queryFn: ({ signal }) =>
+      listCatalog<T>(
+        resource,
+        { skip, limit: PAGE_SIZE, search, includeArchived },
+        signal,
+      ),
   });
 
   const saveMutation = useMutation({
     mutationFn: ({ id, input }: { id?: string; input: TInput }) =>
-      id ? updateCatalog<T, TInput>(resource, id, input) : createCatalog<T, TInput>(resource, input),
+      id
+        ? updateCatalog<T, TInput>(resource, id, input)
+        : createCatalog<T, TInput>(resource, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [resource] }),
   });
 

@@ -10,19 +10,19 @@ import {
   Truck,
   UserRound,
   X,
-} from "lucide-react";
-import { useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useAuth } from "../features/auth/AuthProvider";
+} from 'lucide-react';
+import { useState } from 'react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useAuth } from '../features/auth/AuthProvider';
 
 const navigation = [
-  { to: "/", label: "Обзор", icon: Gauge, end: true },
-  { to: "/units", label: "Единицы измерения", icon: Ruler },
-  { to: "/materials", label: "Материалы", icon: Boxes },
-  { to: "/suppliers", label: "Поставщики", icon: Truck },
-  { to: "/receipts", label: "Поступления", icon: ClipboardList },
-  { to: "/reports", label: "Отчёты", icon: ChartNoAxesCombined },
-  { to: "/admin", label: "Администрирование", icon: Settings },
+  { to: '/', label: 'Обзор', icon: Gauge, end: true },
+  { to: '/units', label: 'Единицы измерения', icon: Ruler },
+  { to: '/materials', label: 'Материалы', icon: Boxes },
+  { to: '/suppliers', label: 'Поставщики', icon: Truck },
+  { to: '/receipts', label: 'Поступления', icon: ClipboardList },
+  { to: '/reports', label: 'Отчёты', icon: ChartNoAxesCombined },
+  { to: '/admin', label: 'Администрирование', icon: Settings },
 ];
 
 export function AppShell() {
@@ -36,7 +36,7 @@ export function AppShell() {
         <button
           className="icon-button menu-button"
           type="button"
-          aria-label={menuOpen ? "Закрыть меню" : "Открыть меню"}
+          aria-label={menuOpen ? 'Закрыть меню' : 'Открыть меню'}
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((value) => !value)}
         >
@@ -50,20 +50,35 @@ export function AppShell() {
           <span className="brand-subtitle">InventoryAccountment</span>
         </div>
         <div className="environment-badge">Локальная среда</div>
-        <NavLink className="profile-link" to="/profile" aria-label="Открыть личный кабинет">
-          <UserRound size={18} aria-hidden="true" /><span>{user?.full_name}</span>
+        <NavLink
+          className="profile-link"
+          to="/profile"
+          aria-label="Открыть личный кабинет"
+        >
+          <UserRound size={18} aria-hidden="true" />
+          <span>{user?.full_name}</span>
         </NavLink>
-        <button className="text-button topbar-logout" type="button" onClick={() => { logout().finally(() => navigate("/login")); }}>Выйти</button>
+        <button
+          className="text-button topbar-logout"
+          type="button"
+          onClick={() => {
+            logout().finally(() => navigate('/login'));
+          }}
+        >
+          Выйти
+        </button>
       </header>
 
-      <aside className={`sidebar${menuOpen ? " sidebar--open" : ""}`}>
+      <aside className={`sidebar${menuOpen ? ' sidebar--open' : ''}`}>
         <nav aria-label="Основная навигация">
           {navigation.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
-              className={({ isActive }) => `nav-item${isActive ? " nav-item--active" : ""}`}
+              className={({ isActive }) =>
+                `nav-item${isActive ? ' nav-item--active' : ''}`
+              }
               onClick={() => setMenuOpen(false)}
             >
               <Icon size={19} aria-hidden="true" />

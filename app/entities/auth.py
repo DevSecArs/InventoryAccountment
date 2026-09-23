@@ -5,13 +5,13 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from fastapi import Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import Column, DateTime, ForeignKey, String, func
-from sqlalchemy.orm import Session
+from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.postgresql import Base, DatabaseSession
 
@@ -23,25 +23,33 @@ SESSION_LIFETIME = timedelta(days=7)
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    login = Column(String(64), nullable=False, unique=True, index=True)
-    password_hash = Column(String(256), nullable=False)
-    full_name = Column(String(255), nullable=False)
-    email = Column(String(255), nullable=True)
-    role = Column(String(32), nullable=False, default="operator")
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    login: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[str] = mapped_column(String(32), nullable=False, default="operator")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
 
 class UserSession(Base):
     __tablename__ = "user_sessions"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    token_hash = Column(String(64), nullable=False, unique=True, index=True)
-    csrf_token = Column(String(64), nullable=False)
-    expires_at = Column(DateTime, nullable=False, index=True)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    csrf_token: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
 
 
 class RegisterRequest(BaseModel):
@@ -117,7 +125,9 @@ def _verify_password(password: str, encoded: str) -> bool:
         algorithm, iterations, salt_hex, digest_hex = encoded.split("$", 3)
         if algorithm != "pbkdf2_sha256":
             return False
-        expected = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt_hex), int(iterations))
+        expected = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), bytes.fromhex(salt_hex), int(iterations)
+        )
         return hmac.compare_digest(expected.hex(), digest_hex)
     except (TypeError, ValueError):
         return False
@@ -148,7 +158,7 @@ def create_session(db: Session, user: User) -> tuple[str, UserSession]:
         user_id=user.id,
         token_hash=_token_hash(token),
         csrf_token=secrets.token_urlsafe(32),
-        expires_at=datetime.now(timezone.utc) + SESSION_LIFETIME,
+        expires_at=datetime.now(UTC) + SESSION_LIFETIME,
     )
     db.add(session)
     db.flush()
@@ -158,14 +168,18 @@ def create_session(db: Session, user: User) -> tuple[str, UserSession]:
 def get_current_user(request: Request, db: DatabaseSession) -> User:
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Требуется авторизация")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Требуется авторизация"
+        )
     session = db.query(UserSession).filter(UserSession.token_hash == _token_hash(token)).first()
-    now = datetime.now(timezone.utc)
-    if not session or session.expires_at.replace(tzinfo=timezone.utc) <= now:
+    now = datetime.now(UTC)
+    if not session or session.expires_at.replace(tzinfo=UTC) <= now:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Сессия истекла")
     user = db.get(User, session.user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Пользователь не найден")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Пользователь не найден"
+        )
     request.state.auth_session = session
     return user
 
@@ -176,7 +190,9 @@ CurrentUser = Depends(get_current_user)
 def require_csrf(request: Request, user: User = CurrentUser) -> User:
     session = request.state.auth_session
     if not hmac.compare_digest(request.headers.get(CSRF_HEADER, ""), session.csrf_token):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недействительный CSRF-токен")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Недействительный CSRF-токен"
+        )
     return user
 
 
@@ -185,7 +201,9 @@ CsrfUser = Depends(require_csrf)
 
 def require_admin(user: User = CsrfUser) -> User:
     if user.role != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Требуются права администратора")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Требуются права администратора"
+        )
     return user
 
 

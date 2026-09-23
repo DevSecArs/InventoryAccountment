@@ -1,6 +1,6 @@
-import { AlertCircle, Copy } from "lucide-react";
+import { AlertCircle, Copy } from 'lucide-react';
 
-import { ApiError } from "../api/client";
+import { ApiError } from '../api/client';
 
 interface ApiErrorNoticeProps {
   error: unknown;
@@ -9,7 +9,8 @@ interface ApiErrorNoticeProps {
 
 export function ApiErrorNotice({ error, onRetry }: ApiErrorNoticeProps) {
   const apiError = error instanceof ApiError ? error : undefined;
-  const message = error instanceof Error ? error.message : "Не удалось выполнить запрос";
+  const message =
+    error instanceof Error ? error.message : 'Не удалось выполнить запрос';
 
   return (
     <div className="error-notice" role="alert">
@@ -20,14 +21,24 @@ export function ApiErrorNotice({ error, onRetry }: ApiErrorNoticeProps) {
           <button
             className="request-id"
             type="button"
-            onClick={() => navigator.clipboard.writeText(apiError.requestId ?? "")}
+            onClick={() =>
+              navigator.clipboard.writeText(apiError.requestId ?? '')
+            }
             title="Скопировать идентификатор запроса"
           >
             Запрос: {apiError.requestId} <Copy size={14} aria-hidden="true" />
           </button>
         )}
       </div>
-      {onRetry && <button className="button button--secondary" type="button" onClick={onRetry}>Повторить</button>}
+      {onRetry && (
+        <button
+          className="button button--secondary"
+          type="button"
+          onClick={onRetry}
+        >
+          Повторить
+        </button>
+      )}
     </div>
   );
 }

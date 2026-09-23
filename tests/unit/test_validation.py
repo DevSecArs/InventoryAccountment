@@ -1,5 +1,7 @@
+from collections.abc import Callable
+
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.entities.auth import RegisterRequest
 from app.entities.material import MaterialCreate
@@ -25,10 +27,15 @@ def test_registration_rejects_invalid_login(login: str) -> None:
         RegisterRequest(login=login, password="reliable-test-password", full_name="Тест")
 
 
-@pytest.mark.parametrize("factory, kwargs", [
-    (MaterialCreate, {"sku": "SKU", "name": "   ", "unit_id": "unit"}),
-    (SupplierCreate, {"code": "SUP", "name": "   "}),
-])
-def test_catalog_rejects_blank_names(factory: object, kwargs: dict[str, str]) -> None:
+@pytest.mark.parametrize(
+    "factory, kwargs",
+    [
+        (MaterialCreate, {"sku": "SKU", "name": "   ", "unit_id": "unit"}),
+        (SupplierCreate, {"code": "SUP", "name": "   "}),
+    ],
+)
+def test_catalog_rejects_blank_names(
+    factory: Callable[..., BaseModel], kwargs: dict[str, str]
+) -> None:
     with pytest.raises(ValidationError):
         factory(**kwargs)

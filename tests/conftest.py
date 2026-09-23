@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,17 +26,21 @@ from app.postgresql import get_engine
 
 
 @pytest.fixture(autouse=True)
-def clean_database() -> None:
+def clean_database() -> Generator[None, None, None]:
     """Очищать все таблицы после миграций, не заменяя их create_all()."""
     with get_engine().begin() as connection:
-        connection.execute(text("TRUNCATE user_sessions, users, materials, suppliers, units CASCADE"))
+        connection.execute(
+            text("TRUNCATE user_sessions, users, materials, suppliers, units CASCADE")
+        )
     yield
     with get_engine().begin() as connection:
-        connection.execute(text("TRUNCATE user_sessions, users, materials, suppliers, units CASCADE"))
+        connection.execute(
+            text("TRUNCATE user_sessions, users, materials, suppliers, units CASCADE")
+        )
 
 
 @pytest.fixture()
-def client() -> TestClient:
+def client() -> Generator[TestClient, None, None]:
     with TestClient(app, base_url="https://testserver") as test_client:
         yield test_client
 
@@ -44,7 +49,11 @@ def client() -> TestClient:
 def authenticated_client(client: TestClient) -> tuple[TestClient, dict[str, str]]:
     response = client.post(
         "/api/v1/auth/register",
-        json={"login": "Admin_User", "password": "reliable-test-password", "full_name": "Администратор"},
+        json={
+            "login": "Admin_User",
+            "password": "reliable-test-password",
+            "full_name": "Администратор",
+        },
     )
     assert response.status_code == 201
     return client, {"X-CSRF-Token": response.json()["csrf_token"]}

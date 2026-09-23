@@ -87,6 +87,8 @@ main → http → entities → postgresql
 make setup TEST=1
 make up TEST=1
 make migrate TEST=1
+make quality TEST=1
+make mutation TEST=1
 # Проверки здоровья: http://127.0.0.1:8001/health/live и /health/ready
 make down TEST=1
 ```
@@ -98,8 +100,11 @@ make down TEST=1
 `make migrate` применяет Alembic-миграции к выбранному окружению. Команды
 `make test TEST=1` применяет миграции к изолированной БД, запускает backend- и
 frontend-тесты и формирует игнорируемые Git отчёты JUnit, XML и HTML coverage
-в `reports/`. Команды `quality`, `verify`, backup/restore и CI добавляются
-следующими задачами.
+в `reports/`. `make quality` проверяет форматирование, статический анализ,
+SAST, известные уязвимости зависимостей и frontend без изменения исходников.
+`make mutation TEST=1` запускает мутационную проверку критической логики
+аутентификации только в изолированном контуре. Команды `verify`, backup/restore
+и CI добавляются следующими задачами.
 
 Для реализации потребуются Git, GNU Make, Python и Docker с Compose. Точные версии и зависимости должны быть закреплены при создании каркаса приложения. На Windows команды предполагается выполнять в WSL2 с Docker Desktop.
 
