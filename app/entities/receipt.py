@@ -26,11 +26,25 @@ from app.entities.unit import get_unit
 from app.postgresql import Base
 
 
+def _normalize_document_number(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise PydanticCustomError("document_number_blank", "Номер документа не может быть пустым")
+    if len(normalized) > 64:
+        raise PydanticCustomError(
+            "document_number_too_long", "Номер документа не может быть длиннее 64 символов"
+        )
+    return normalized
+
+
 class Receipt(Base):
     __tablename__ = "receipts"
     __table_args__ = (
         UniqueConstraint("supplier_id", "document_number"),
         CheckConstraint("status IN ('draft', 'queued', 'processing', 'posted', 'failed')"),
+        CheckConstraint(
+            "btrim(document_number) <> ''", name="ck_receipts_document_number_not_blank"
+        ),
         Index("ix_receipts_status_received_at", "status", "received_at"),
         Index("ix_receipts_supplier_received_at", "supplier_id", "received_at"),
     )
@@ -92,31 +106,26 @@ class ReceiptItemResponse(BaseModel):
 
 class ReceiptCreate(BaseModel):
     supplier_id: str
-    document_number: str = Field(min_length=1, max_length=64)
+    document_number: str
     received_at: datetime
     items: list[ReceiptItemPayload] = Field(min_length=1)
 
     @field_validator("document_number")
     @classmethod
     def normalize(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise PydanticCustomError(
-                "document_number_blank", "Номер документа не может быть пустым"
-            )
-        return value
+        return _normalize_document_number(value)
 
 
 class ReceiptUpdate(BaseModel):
     supplier_id: str | None = None
-    document_number: str | None = Field(None, min_length=1, max_length=64)
+    document_number: str | None = None
     received_at: datetime | None = None
     items: list[ReceiptItemPayload] | None = Field(None, min_length=1)
 
     @field_validator("document_number")
     @classmethod
     def normalize(cls, value: str | None) -> str | None:
-        return value.strip() if value is not None else value
+        return _normalize_document_number(value) if value is not None else value
 
 
 class ReceiptResponse(BaseModel):

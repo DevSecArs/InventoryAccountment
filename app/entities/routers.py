@@ -1,6 +1,7 @@
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.entities import auth as auth_service
@@ -28,6 +29,11 @@ def create_receipt(
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+    except IntegrityError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Конфликт ограничения целостности поступления",
+        ) from error
 
 
 @receipt_router.get("/", response_model=receipt_service.ReceiptListResponse)
@@ -67,6 +73,11 @@ def patch_receipt(
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+    except IntegrityError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Конфликт ограничения целостности поступления",
+        ) from error
 
 
 def _set_session_cookie(response: Response, token: str) -> None:
