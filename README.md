@@ -79,23 +79,29 @@ main → http → entities → postgresql
 
 На текущем этапе реализованы первые команды контура разработки: `setup`, `run`,
 `up`, `down` и `migrate`. Для безопасной проверки используется отдельный режим
-`TEST=1`: он читает только `.env.test`, использует БД с суффиксом `_test` и
+`LOCAL=1`: он читает только `.env.test`, использует БД с суффиксом `_test` и
 временный Docker-том. Обычный режим читает `.env`; его остановка не удаляет
 том PostgreSQL.
 
+Имя Compose-проекта локального контура содержит хеш пути рабочей копии. Для
+параллельных запусков из одной рабочей копии задайте разный
+`LOCAL_RUN_ID`, и используйте его во всех командах одного запуска, например
+`make up LOCAL=1 LOCAL_RUN_ID=review-a`. Без этого параметра команды из одной
+рабочей копии выполняйте последовательно.
+
 ```bash
-make setup TEST=1
-make up TEST=1
-make migrate TEST=1
-make quality TEST=1
-make mutation TEST=1
-make migration-check TEST=1
-make backup TEST=1
-make backup-restore-check TEST=1
-make container-check TEST=1
-make verify TEST=1
+make setup LOCAL=1
+make up LOCAL=1
+make migrate LOCAL=1
+make quality LOCAL=1
+make mutation LOCAL=1
+make migration-check LOCAL=1
+make backup LOCAL=1
+make backup-restore-check LOCAL=1
+make container-check LOCAL=1
+make verify LOCAL=1
 # Проверки здоровья: http://127.0.0.1:8001/health/live и /health/ready
-make down TEST=1
+make down LOCAL=1
 ```
 
 `make setup` создаёт отсутствующий файл конфигурации из соответствующего
@@ -103,13 +109,13 @@ make down TEST=1
 из `frontend/pnpm-lock.yaml`. Существующие `.env` и `.env.test` не
 перезаписываются. `make up` собирает образ и ожидает healthcheck сервисов,
 `make migrate` применяет Alembic-миграции к выбранному окружению. Команды
-`make test TEST=1` применяет миграции к изолированной БД, запускает backend- и
+`make test LOCAL=1` применяет миграции к изолированной БД, запускает backend- и
 frontend-тесты и формирует игнорируемые Git отчёты JUnit, XML и HTML coverage
 в `reports/`. `make quality` проверяет форматирование, статический анализ,
 SAST, известные уязвимости зависимостей и frontend без изменения исходников.
-`make mutation TEST=1` запускает мутационную проверку критической логики
+`make mutation LOCAL=1` запускает мутационную проверку критической логики
 аутентификации и проверки количества позиции поступления только в изолированном
-контуре. `make migration-check TEST=1`
+контуре. `make migration-check LOCAL=1`
 создаёт отдельные временные БД и проверяет создание чистой схемы, обновление
 заполненной базы и round-trip последней миграции. `make backup` создаёт
 custom-дамп в игнорируемом `backups/` и выводит путь, UTC-время, SHA-256 и
@@ -117,18 +123,18 @@ Alembic revision без реквизитов доступа. `make restore BACKU
 проверяет метаданные и по умолчанию создаёт новую БД. Замена существующей БД
 возможна только при `RESTORE_EXISTING=1`, заданных `TARGET_DATABASE_URL`,
 `TARGET_DATABASE` и совпадающем `CONFIRM_TARGET_DATABASE`. Автоматическая
-`make backup-restore-check TEST=1` создаёт связанные тестовые данные, намеренно
+`make backup-restore-check LOCAL=1` создаёт связанные тестовые данные, намеренно
 повреждает исходную тестовую БД, восстанавливает дамп в отдельную временную БД,
 сверяет связи, количество строк и версию схемы, затем удаляет временные БД и
 дампы своего запуска.
 
-`make container-check TEST=1` собирает актуальный test-образ, применяет
+`make container-check LOCAL=1` собирает актуальный test-образ, применяет
 миграции и выполняет HTTP smoke-сценарий через запущенный API: readiness,
 регистрацию администратора и создание с последующим чтением единицы измерения.
 После завершения, включая ошибочный, удаляются только контейнеры и тома
 тестового Compose-проекта.
 
-`make verify TEST=1` — единственная обязательная команда перед запросом на
+`make verify LOCAL=1` — единственная обязательная команда перед запросом на
 слияние. Она печатает и последовательно выполняет следующие блокирующие шаги:
 
 1. Проверяет Python- и frontend-lock-файлы; отказ означает, что зависимости
@@ -146,7 +152,7 @@ Alembic revision без реквизитов доступа. `make restore BACKU
    или тома тестового Compose-проекта, и выполняет `git diff --check`.
 
 При первой ошибке выполнение прекращается, а тестовые Docker-ресурсы удаляются.
-GitHub Actions вызывает именно `make verify TEST=1`, не дублируя его шаги, и
+GitHub Actions вызывает именно `make verify LOCAL=1`, не дублируя его шаги, и
 загружает каталог `reports/` даже при неуспехе. Успешный локальный запуск не
 равнозначен успешному CI, слиянию или релизу.
 

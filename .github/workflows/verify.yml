@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   verify:
-    name: make verify TEST=1
+    name: make verify LOCAL=1
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -32,10 +32,10 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Подготовить окружение
-        run: make setup TEST=1
+        run: make setup LOCAL=1
 
       - name: Выполнить обязательный контур
-        run: make verify TEST=1
+        run: make verify LOCAL=1
 
       - name: Сохранить отчёты
         if: always()
