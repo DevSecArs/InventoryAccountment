@@ -1,4 +1,17 @@
+import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
+from sqlalchemy import text
+
+from app import http
+from app.postgresql import get_session_factory
+
+
+def _assert_error(response: Response, status_code: int) -> None:
+    assert response.status_code == status_code
+    body = response.json()
+    assert body["code"] == f"http_{status_code}"
+    assert {"code", "message", "details", "request_id"} <= body.keys()
 
 
 def test_health_and_error_format(client: TestClient) -> None:
@@ -171,3 +184,60 @@ def test_login_profile_and_logout(client: TestClient) -> None:
         ).status_code
         == 200
     )
+
+
+def test_readiness_reports_database_unavailable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(http, "is_database_ready", lambda: False)
+
+    _assert_error(client.get("/health/ready"), 503)
+
+
+def test_expired_session_and_missing_csrf_have_uniform_errors(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"login": "admin", "password": "reliable-test-password", "full_name": "Администратор"},
+    )
+    assert response.status_code == 201
+    session = get_session_factory()()
+    try:
+        session.execute(text("UPDATE user_sessions SET expires_at = now() - interval '1 second'"))
+        session.commit()
+    finally:
+        session.close()
+
+    _assert_error(client.get("/api/v1/units/"), 401)
+    client.cookies.clear()
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"login": "admin", "password": "reliable-test-password"},
+    )
+    assert login.status_code == 200
+    _assert_error(client.post("/api/v1/units/", json={"code": "KG"}), 403)
+
+
+def test_non_admin_cannot_purge_archived_catalog(
+    authenticated_client: tuple[TestClient, dict[str, str]],
+) -> None:
+    client, headers = authenticated_client
+    unit = client.post("/api/v1/units/", json={"code": "KG"}, headers=headers).json()
+    assert client.delete(f"/api/v1/units/{unit['id']}", headers=headers).status_code == 204
+    session = get_session_factory()()
+    try:
+        session.execute(text("UPDATE users SET role = 'operator'"))
+        session.commit()
+    finally:
+        session.close()
+
+    _assert_error(client.delete(f"/api/v1/units/{unit['id']}/purge", headers=headers), 403)
+
+
+def test_catalog_pagination_and_search_parameter_boundaries(
+    authenticated_client: tuple[TestClient, dict[str, str]],
+) -> None:
+    client, _ = authenticated_client
+    for query in ("?skip=-1", "?limit=0", "?limit=1001"):
+        response = client.get(f"/api/v1/materials/{query}")
+        assert response.status_code == 422
+        assert response.json()["code"] == "validation_error"

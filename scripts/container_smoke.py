@@ -73,6 +73,9 @@ def main() -> None:
     )
     csrf_token = require_string(registration, "csrf_token")
     session_cookie = session_cookie_header(cookie_jar)
+    # Cookie имеет флаг Secure и CookieJar не отправляет её по локальному HTTP.
+    # Для последующих запросов передаём её явно, без обработчика CookieJar.
+    opener = build_opener()
     unit = request_json(
         opener,
         "/api/v1/units/",
