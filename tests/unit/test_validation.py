@@ -1,11 +1,13 @@
 from collections.abc import Callable
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import BaseModel, ValidationError
+from sqlalchemy.orm import Session
 
 from app.entities.auth import RegisterRequest
 from app.entities.material import MaterialCreate
-from app.entities.receipt import ReceiptCreate, ReceiptItemPayload, ReceiptUpdate
+from app.entities.receipt import ReceiptCreate, ReceiptItemPayload, ReceiptUpdate, _items
 from app.entities.supplier import SupplierCreate
 from app.entities.unit import UnitCreate
 
@@ -72,3 +74,12 @@ def test_receipt_rejects_invalid_document_number(value: str) -> None:
 def test_receipt_quantity_respects_positive_numeric_18_3(quantity: str) -> None:
     with pytest.raises(ValidationError):
         ReceiptItemPayload(material_id="material", quantity=quantity)
+
+
+def test_receipt_items_reject_duplicate_material_ids_before_database_access() -> None:
+    items: list[dict[str, object]] = [
+        {"material_id": "material", "quantity": "1"},
+        {"material_id": "material", "quantity": "2"},
+    ]
+    with pytest.raises(ValueError, match="Материал повторяется"):
+        _items(MagicMock(spec=Session), items)

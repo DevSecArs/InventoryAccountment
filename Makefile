@@ -23,7 +23,7 @@ ENV_FILE := .env
 COMPOSE := docker compose --project-name inventory-accountment --env-file $(ENV_FILE) -f docker-compose.yaml
 endif
 
-.PHONY: setup run up down migrate test quality mutation migration-check backup restore backup-restore-check lock-check container-check verify check-local-environment check-local-project-clean check-working-tree-diff check-branch-diff
+.PHONY: setup run up down migrate test quality mutation migration-check backup restore backup-restore-check lock-check secret-scan image-scan container-check verify check-local-environment check-local-project-clean check-working-tree-diff check-branch-diff
 
 setup:
 	@python --version
@@ -94,14 +94,25 @@ else
 	@uv run --frozen bandit -q -r app scripts -lll -f json -o reports/bandit.json
 	@uv run --frozen sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
 endif
-	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile && pnpm quality'
+	@mkdir -p reports
+	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" -v "$(CURDIR)/reports:/reports" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile && pnpm quality && pnpm audit --audit-level=high --json > /reports/pnpm-audit.json'
+	@$(MAKE) secret-scan
+
+secret-scan:
+	@mkdir -p reports
+	@docker run --rm -v "$(CURDIR):/repo:ro" -v "$(CURDIR)/reports:/reports" zricethezav/gitleaks:v8.21.2 detect --source=/repo --report-format=json --report-path=/reports/gitleaks.json --redact --exit-code=1
+
+image-scan:
+	@test -n "$(IMAGE_ID)" || (echo "Укажите IMAGE_ID собранного образа" >&2; exit 2)
+	@mkdir -p reports
+	@docker image inspect "$(IMAGE_ID)" --format '{{.Id}}' >/dev/null
+	@docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$(CURDIR)/reports:/reports" aquasec/trivy:0.56.2 image --severity HIGH,CRITICAL --exit-code 1 --format json --output /reports/trivy-image.json "$(IMAGE_ID)"
 
 mutation:
 ifeq ($(LOCAL),1)
 	@$(MAKE) check-local-environment LOCAL=1
 	@$(COMPOSE) run --rm app alembic upgrade head
-	@$(COMPOSE) run --rm -e PYTEST_ADDOPTS=--no-cov app mutmut run "*verify_password*"
-	@$(COMPOSE) run --rm -e PYTEST_ADDOPTS=--no-cov app python scripts/check_quantity_mutation.py
+	@$(COMPOSE) run --rm -e PYTEST_ADDOPTS=--no-cov app python scripts/check_critical_mutations.py
 else
 	@echo "Мутационная проверка разрешена только с LOCAL=1" >&2
 	@exit 2
@@ -158,6 +169,8 @@ ifeq ($(LOCAL),1)
 	cleanup() { $(COMPOSE) down --volumes --remove-orphans; }; \
 	trap cleanup EXIT HUP INT TERM; \
 	$(COMPOSE) up --build --detach --wait; \
+	image_id="$$($(COMPOSE) images -q app)"; \
+	$(MAKE) image-scan IMAGE_ID="$$image_id"; \
 	$(COMPOSE) run --rm app alembic upgrade head; \
 	$(COMPOSE) exec -T app python scripts/container_smoke.py; \
 	$(COMPOSE) ps; \
