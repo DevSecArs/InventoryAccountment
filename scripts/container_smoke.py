@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from http.cookiejar import CookieJar
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPCookieProcessor, OpenerDirector, Request, build_opener
@@ -45,17 +44,8 @@ def require_string(payload: dict[str, Any], key: str) -> str:
     return value
 
 
-def session_cookie_header(cookie_jar: CookieJar) -> str:
-    """Получить сессионную cookie для HTTP smoke-сценария без вывода её значения."""
-    for cookie in cookie_jar:
-        if cookie.name == "inventory_session" and cookie.value:
-            return f"{cookie.name}={cookie.value}"
-    raise RuntimeError("API не выдал сессионную cookie")
-
-
 def main() -> None:
-    cookie_jar = CookieJar()
-    opener = build_opener(HTTPCookieProcessor(cookie_jar))
+    opener = build_opener(HTTPCookieProcessor())
     for health_path in ("/health/live", "/health/ready"):
         health = request_json(opener, health_path)
         if health.get("status") != "ok":
@@ -72,19 +62,15 @@ def main() -> None:
         },
     )
     csrf_token = require_string(registration, "csrf_token")
-    session_cookie = session_cookie_header(cookie_jar)
-    # Cookie имеет флаг Secure и CookieJar не отправляет её по локальному HTTP.
-    # Для последующих запросов передаём её явно, без обработчика CookieJar.
-    opener = build_opener()
     unit = request_json(
         opener,
         "/api/v1/units/",
         method="POST",
         payload={"code": "KG"},
-        headers={"Cookie": session_cookie, "X-CSRF-Token": csrf_token},
+        headers={"X-CSRF-Token": csrf_token},
     )
     unit_id = require_string(unit, "id")
-    units = request_json(opener, "/api/v1/units/", headers={"Cookie": session_cookie})
+    units = request_json(opener, "/api/v1/units/")
     items = units.get("items")
     if not isinstance(items, list) or not any(
         isinstance(item, dict) and item.get("id") == unit_id and item.get("code") == "KG"

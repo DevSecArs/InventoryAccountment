@@ -85,7 +85,7 @@ def _set_session_cookie(response: Response, token: str) -> None:
         key=auth_service.SESSION_COOKIE,
         value=token,
         httponly=True,
-        secure=settings.APP_ENV != "development",
+        secure=settings.APP_ENV not in {"development", "test"},
         samesite="strict",
         max_age=int(auth_service.SESSION_LIFETIME.total_seconds()),
         path="/",
