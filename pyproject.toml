@@ -61,6 +61,12 @@ show_missing = true
 
 [tool.uv]
 package = true
+override-dependencies = [
+    "jaraco.context>=6.1.0",
+    "msgpack>=1.2.1",
+    "setuptools>=80.0.0",
+    "wheel>=0.46.2",
+]
 
 [tool.mypy]
 python_version = "3.11"

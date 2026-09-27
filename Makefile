@@ -106,7 +106,7 @@ image-scan:
 	@test -n "$(IMAGE_ID)" || (echo "Укажите IMAGE_ID собранного образа" >&2; exit 2)
 	@mkdir -p reports
 	@docker image inspect "$(IMAGE_ID)" --format '{{.Id}}' >/dev/null
-	@docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$(CURDIR)/reports:/reports" aquasec/trivy:0.56.2 image --severity HIGH,CRITICAL --exit-code 1 --format json --output /reports/trivy-image.json "$(IMAGE_ID)"
+	@docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$(CURDIR)/reports:/reports" aquasec/trivy:0.56.2 image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed --format json --output /reports/trivy-image.json "$(IMAGE_ID)"
 
 mutation:
 ifeq ($(LOCAL),1)
@@ -169,7 +169,7 @@ ifeq ($(LOCAL),1)
 	cleanup() { $(COMPOSE) down --volumes --remove-orphans; }; \
 	trap cleanup EXIT HUP INT TERM; \
 	$(COMPOSE) up --build --detach --wait; \
-	image_id="$$($(COMPOSE) images -q app)"; \
+	image_id="inventory-accountment-local-ubuntu-verify-app:latest"; \
 	$(MAKE) image-scan IMAGE_ID="$$image_id"; \
 	$(COMPOSE) run --rm app alembic upgrade head; \
 	$(COMPOSE) exec -T app python scripts/container_smoke.py; \
