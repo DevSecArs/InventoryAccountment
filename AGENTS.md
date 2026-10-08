@@ -23,7 +23,7 @@
 
 ## Локальные проверки
 
-Обязательный интерфейс команд определён в README: `make setup`, `make run`, `make test`, `make quality`, `make migrate`, `make backup`, `make restore`, `make verify`, `make up`, `make down`, `make container-check`.
+Обязательный интерфейс команд определён в README: `make setup`, `make run`, `make status`, `make test`, `make quality`, `make migrate`, `make backup`, `make restore`, `make verify`, `make up`, `make down`.
 
 - Основная команда перед запросом на слияние — `make verify DOCKER=1`: формат, статический анализ, тесты с покрытием, SAST, audit зависимостей, поиск секретов, миграции и проверка контейнеров. CI запускает ту же команду и сохраняет отчёты из `reports/` при успехе и отказе.
 - `make quality` проверяет файлы без автоматического исправления. До первой функции задайте инструменты и конфигурацию, закрепите версии и минимальное покрытие бизнес-логики 80%.

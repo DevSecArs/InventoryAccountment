@@ -53,7 +53,7 @@ make quality DOCKER=1          # формат, lint, typing, SAST, dependency и
 make mutation DOCKER=1         # критические контролируемые мутации
 make backup DOCKER=1           # создать проверяемый дамп в backups/
 make restore DOCKER=1 BACKUP=backups/<имя>.dump
-make container-check DOCKER=1  # собрать, scan образа и выполнить HTTP smoke
+make status DOCKER=1           # вывести статус и логи Docker-контура
 make verify DOCKER=1           # полный блокирующий контур
 ```
 
@@ -299,7 +299,17 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 3. Скопировать исходники frontend без `node_modules`.
 4. Установить frontend-зависимости по `pnpm-lock.yaml`.
 
-### `make container-check DOCKER=1`
+### `make status`
+
+1. Определить Compose-проект по `DOCKER` и `DOCKER_RUN_ID`.
+2. Вывести статусы всех найденных контейнеров проекта.
+3. Вывести последние 50 строк логов каждого найденного контейнера.
+4. При отсутствии работающих контейнеров вывести соответствующее сообщение.
+5. Проверить backend на `127.0.0.1:8000/health/live` и `/health/ready`.
+6. Проверить frontend на `127.0.0.1:5173`.
+7. Вернуть код `0`, если локальные backend и frontend доступны; иначе вернуть код `2`.
+
+### `make container-smoke DOCKER=1`
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Зарегистрировать очистку ресурсов тестового Compose-проекта.
@@ -344,7 +354,7 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 6. Выполнить `make mutation DOCKER=1`.
 7. Выполнить `make migration-check DOCKER=1`.
 8. Выполнить `make backup-restore-check DOCKER=1`.
-9. Выполнить `make container-check DOCKER=1`.
+9. Выполнить `make container-smoke DOCKER=1`.
 10. Выполнить `make check-docker-project-clean DOCKER=1`.
 11. Выполнить `make check-working-tree-diff`.
 12. Выполнить `make check-branch-diff`.

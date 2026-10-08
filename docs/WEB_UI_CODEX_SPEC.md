@@ -389,7 +389,7 @@ backend-задачей. Не хардкодить предположительн
 - production-сборка воспроизводима из lock-файла и не требует CDN;
 - компонентные и сквозные тесты проходят;
 - `make setup`, `make run`, `make test`, `make quality`, `make verify`,
-  `make up`, `make down` и `make container-check` включают frontend там, где
+  `make up`, `make down` и `make status` включают frontend там, где
   это применимо;
 - README, инструкция запуска и API-документация обновлены;
 - `make verify` проходит на актуальном коммите;

@@ -27,10 +27,11 @@ DOCKER_PROJECT := inventory-accountment-local-$(DOCKER_RUN_ID)
 COMPOSE := docker compose --project-name $(DOCKER_PROJECT) --env-file $(ENV_FILE) -f compose.test.yaml
 else
 ENV_FILE := $(PRODUCTION_ENV_FILE)
-COMPOSE := docker compose --project-name inventory-accountment --env-file $(ENV_FILE) -f docker-compose.yaml
+DOCKER_PROJECT := inventory-accountment
+COMPOSE := docker compose --project-name $(DOCKER_PROJECT) --env-file $(ENV_FILE) -f docker-compose.yaml
 endif
 
-.PHONY: setup run up down migrate test test-in-container quality mutation migration-check backup restore backup-restore-check lock-check secret-scan image-scan container-check verify check-docker-environment check-docker-project-clean check-working-tree-diff check-branch-diff
+.PHONY: setup run up down status migrate test test-in-container quality mutation migration-check backup restore backup-restore-check lock-check secret-scan image-scan container-smoke verify check-docker-environment check-docker-project-clean check-working-tree-diff check-branch-diff
 
 setup:
 	@$(PYTHON) --version
@@ -76,6 +77,45 @@ ifeq ($(DOCKER),1)
 else
 	@$(COMPOSE) down --remove-orphans
 endif
+
+status:
+	@set -eu; \
+	project="$(DOCKER_PROJECT)"; \
+	container_ids=""; \
+	running_container_ids=""; \
+	if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then \
+		container_ids=$$(docker ps --all --filter "label=com.docker.compose.project=$$project" --quiet); \
+		running_container_ids=$$(docker ps --filter "label=com.docker.compose.project=$$project" --quiet); \
+	else \
+		echo "Docker недоступен; контейнеры Compose-проекта $$project не проверены."; \
+	fi; \
+	if [ -n "$$container_ids" ]; then \
+		echo "Состояние контейнеров Compose-проекта $$project:"; \
+		docker ps --all --filter "label=com.docker.compose.project=$$project" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'; \
+		echo "Последние 50 строк логов каждого контейнера:"; \
+		for container_id in $$container_ids; do \
+			echo "==> $$container_id"; \
+			docker logs --tail 50 "$$container_id" 2>&1 || true; \
+		done; \
+		if [ -n "$$running_container_ids" ]; then exit 0; fi; \
+	fi; \
+	echo "Контейнеры Compose-проекта $$project не запущены."; \
+	echo "Проверка локально запущенного приложения:"; \
+	backend_url="http://127.0.0.1:$${APP_PORT:-8000}"; \
+	frontend_url="http://127.0.0.1:$${FRONTEND_PORT:-5173}"; \
+	backend_ok=0; frontend_ok=0; \
+	if curl --fail --silent --show-error "$$backend_url/health/live" >/dev/null && curl --fail --silent --show-error "$$backend_url/health/ready" >/dev/null; then \
+		backend_ok=1; echo "Backend доступен: $$backend_url"; \
+	else \
+		echo "Backend недоступен: $$backend_url"; \
+	fi; \
+	if curl --fail --silent --show-error "$$frontend_url/" >/dev/null; then \
+		frontend_ok=1; echo "Frontend доступен: $$frontend_url"; \
+	else \
+		echo "Frontend недоступен: $$frontend_url"; \
+	fi; \
+	if [ "$$backend_ok" -eq 1 ] && [ "$$frontend_ok" -eq 1 ]; then exit 0; fi; \
+	exit 2
 
 migrate:
 ifeq ($(DOCKER),1)
@@ -174,7 +214,7 @@ lock-check:
 	@$(UV) lock --check
 	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile'
 
-container-check:
+container-smoke:
 ifeq ($(DOCKER),1)
 	@$(MAKE) check-docker-environment DOCKER=1
 	@set -eu; \
@@ -189,7 +229,7 @@ ifeq ($(DOCKER),1)
 	cleanup; \
 	trap - EXIT HUP INT TERM
 else
-	@echo "Контейнерная проверка разрешена только с DOCKER=1" >&2
+	@echo "Контейнерный smoke-сценарий разрешён только с DOCKER=1" >&2
 	@exit 2
 endif
 
@@ -217,7 +257,7 @@ ifeq ($(DOCKER),1)
 	echo '==> Мутационная проверка'; $(MAKE) mutation DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
 	echo '==> Проверка миграций'; $(MAKE) migration-check DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
 	echo '==> Проверка backup/restore'; $(MAKE) backup-restore-check DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
-	echo '==> Контейнерный smoke-сценарий'; $(MAKE) container-check DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
+	echo '==> Контейнерный smoke-сценарий'; $(MAKE) container-smoke DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
 	echo '==> Проверка очистки тестового проекта'; $(MAKE) check-docker-project-clean DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
 	echo '==> Проверка whitespace рабочей копии'; $(MAKE) check-working-tree-diff; \
 	echo '==> Проверка whitespace веточной разницы'; $(MAKE) check-branch-diff; \
