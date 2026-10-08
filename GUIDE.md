@@ -30,6 +30,10 @@ make run
 Сам API в этом сценарии запускается напрямую, но `make setup` всё равно
 готовит Docker, потому что `make test` всегда выполняется изолированно.
 
+`make run` запускает backend на `0.0.0.0:8000` и frontend на `0.0.0.0:5173`.
+`make up` и Docker-режим публикуют те же порты наружу; для доступа с другого
+компьютера откройте их в firewall только для доверенной сети.
+
 `DOCKER=1` использует только безопасный `.env.example`, базу с суффиксом `_test`
 и отдельный Compose-проект. Для двух запусков в одной рабочей копии укажите свой
 `DOCKER_RUN_ID` во всех командах одного запуска.
@@ -132,27 +136,31 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Собрать образы тестового Compose-проекта.
-3. Запустить PostgreSQL и приложение в foreground.
+3. Запустить PostgreSQL, backend и frontend в foreground.
+4. Опубликовать backend на `0.0.0.0:8001` и frontend на `0.0.0.0:5174`.
 
 ### `make run`
 
-1. Запустить Uvicorn через `python3 -m uv`.
+1. Запустить Uvicorn через `python3 -m uv` на `0.0.0.0`.
 2. Загрузить настройки из `/etc/InventoryAccountment/InventoryAccountment.env`.
-3. Запустить приложение на `127.0.0.1` и порту из `APP_PORT`.
+3. Запустить Vite на `0.0.0.0` и порту из `FRONTEND_PORT`.
+4. Направить запросы frontend к локальному backend через Vite proxy.
 
 ### `make up DOCKER=1`
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Собрать образы тестового Compose-проекта.
-3. Запустить сервисы в фоне.
-4. Дождаться healthcheck сервисов.
+3. Запустить PostgreSQL, backend и frontend в фоне.
+4. Опубликовать backend на `0.0.0.0:8001` и frontend на `0.0.0.0:5174`.
+5. Дождаться healthcheck сервисов.
 
 ### `make up`
 
 1. Передать `/etc/InventoryAccountment/InventoryAccountment.env` в Docker Compose.
 2. Собрать образы Compose-проекта.
-3. Запустить сервисы в фоне.
-4. Дождаться healthcheck сервисов.
+3. Запустить PostgreSQL, backend и frontend в фоне.
+4. Опубликовать backend и frontend на `0.0.0.0`.
+5. Дождаться healthcheck сервисов.
 
 ### `make down DOCKER=1`
 

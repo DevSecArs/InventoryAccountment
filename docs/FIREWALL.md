@@ -1,12 +1,12 @@
-# Настройка firewall для API и PostgreSQL
+# Настройка firewall для frontend, API и PostgreSQL
 
 Инструкция рассчитана на два сервера с Ubuntu и UFW:
 
 ```text
-Клиенты → app-server:8000 → db-server:5432
+Клиенты → app-server:5173 → app-server:8000 → db-server:5432
 ```
 
-Клиенты подключаются только к API на `app-server`. PostgreSQL на `db-server`
+Клиенты подключаются к frontend и API на `app-server`. PostgreSQL на `db-server`
 принимает соединения только от `app-server`. Используйте частные адреса сети,
 а не публикуйте PostgreSQL в интернет.
 
@@ -21,7 +21,7 @@
 потерять доступ к серверу. Выполняйте настройку через консоль провайдера или
 из второй SSH-сессии, чтобы сразу проверить соединение.
 
-## 1. Открыть API для клиентов
+## 1. Открыть frontend и API для клиентов
 
 По умолчанию unit из инструкции systemd слушает `127.0.0.1`, поэтому клиенты
 его не видят. Если клиенты должны обращаться к FastAPI напрямую, на
@@ -39,12 +39,13 @@ sudo systemctl daemon-reload
 sudo systemctl restart inventory-accountment.service
 ```
 
-Откройте только SSH для администраторов и API для сети клиентов:
+Откройте только SSH для администраторов, frontend и API для сети клиентов:
 
 ```bash
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow from <SSH_NETWORK> to any port 22 proto tcp
+sudo ufw allow from <CLIENT_NETWORK> to any port 5173 proto tcp
 sudo ufw allow from <CLIENT_NETWORK> to any port 8000 proto tcp
 sudo ufw enable
 sudo ufw status numbered

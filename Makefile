@@ -55,7 +55,12 @@ ifeq ($(DOCKER),1)
 	@$(MAKE) check-docker-environment DOCKER=1
 	@$(COMPOSE) up --build
 else
-	@$(UV) run --frozen uvicorn app.main:app --host 127.0.0.1 --port "$${APP_PORT:-8000}"
+	@set -eu; \
+	$(UV) run --frozen uvicorn app.main:app --host 0.0.0.0 --port "$${APP_PORT:-8000}" & backend_pid=$$!; \
+	cleanup() { kill "$$backend_pid" 2>/dev/null || true; }; \
+	trap cleanup EXIT HUP INT TERM; \
+	VITE_API_PROXY_TARGET="http://127.0.0.1:$${APP_PORT:-8000}" pnpm --dir frontend exec vite --host 0.0.0.0 --port "$${FRONTEND_PORT:-5173}"; \
+	trap - EXIT HUP INT TERM
 endif
 
 up:

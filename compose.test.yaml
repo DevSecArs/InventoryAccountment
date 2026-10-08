@@ -26,11 +26,28 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "127.0.0.1:${APP_PORT}:8000"
+      - "0.0.0.0:${APP_PORT}:8000"
     volumes:
       - ./reports:/app/reports
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  frontend:
+    build:
+      context: .
+      target: frontend
+    environment:
+      VITE_API_PROXY_TARGET: http://app:8000
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "0.0.0.0:${FRONTEND_PORT}:5173"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 5s
       timeout: 5s
       retries: 12

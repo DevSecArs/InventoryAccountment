@@ -3,8 +3,8 @@
 Инструкция предназначена для Ubuntu Server 24.04 LTS. Она сначала запускает
 все обязательные проверки в изолированном Docker-контуре и только после их
 успешного завершения запускает рабочие контейнеры приложения и PostgreSQL.
-Текущий Compose-контур публикует FastAPI и PostgreSQL; frontend проходит
-проверки, но отдельный production-сервис для его публикации пока не настроен.
+Текущий Compose-контур публикует FastAPI и Vite frontend на всех интерфейсах;
+PostgreSQL остаётся доступной только на loopback-интерфейсе.
 
 Для проверки понадобится сервер минимум с 2 ядрами CPU, 4 ГБ оперативной
 памяти и 20 ГБ свободного места. Нужны пользователь с `sudo`, SSH-доступ и
@@ -264,7 +264,7 @@ sudo chmod 640 /etc/InventoryAccountment/InventoryAccountment.env
 DATABASE_URL=postgresql+psycopg2://<USER>:<PASSWORD>@<DB_HOST>:5432/inventory
 APP_ENV=production
 APP_DEBUG=false
-APP_HOST=127.0.0.1
+APP_HOST=0.0.0.0
 APP_PORT=8000
 ```
 
@@ -293,8 +293,8 @@ make run
 **Краткое описание**
 
 `make migrate` применяет все миграции Alembic к рабочей БД, а `make run`
-запускает FastAPI с конфигурацией из системного файла. Схему нельзя создавать
-вручную.
+запускает FastAPI и Vite frontend с конфигурацией из системного файла. Схему
+нельзя создавать вручную.
 
 ## 11. Проверить запущенное приложение
 
