@@ -199,15 +199,19 @@ ensure-pnpm-store:
 quality:
 ifeq ($(DOCKER),1)
 	@$(MAKE) check-docker-environment DOCKER=1
-	@$(COMPOSE) run --rm --user root app sh -c 'mkdir -p reports && ruff format --check --no-cache app tests scripts && ruff check --no-cache app tests scripts && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts'
+	@echo '==> Backend: собираю актуальный test-образ для статических проверок'
+	@$(COMPOSE) build --progress=plain app
+	@echo '==> Backend: запускаю Ruff и mypy без зависимостей Compose'
+	@$(COMPOSE) run --rm --no-deps --user root app sh -c 'mkdir -p reports && ruff format --check --no-cache app tests scripts && ruff check --no-cache app tests scripts && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts'
 	@echo '==> SAST: начинаю проверку Python-кода Bandit'
 	@set -eu; \
-	if $(COMPOSE) run --rm --user root app bandit -q -r app scripts -lll -f json -o reports/bandit.json; then \
+	if $(COMPOSE) run --rm --no-deps --user root app bandit -q -r app scripts -lll -f json -o reports/bandit.json; then \
 		echo '==> SAST: Bandit завершён успешно, отчёт: reports/bandit.json'; \
 	else \
 		status=$$?; echo '==> SAST: Bandit завершился с ошибкой, отчёт: reports/bandit.json' >&2; exit $$status; \
 	fi
-	@$(COMPOSE) run --rm --user root app sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
+	@echo '==> Backend: запускаю audit Python-зависимостей без зависимостей Compose'
+	@$(COMPOSE) run --rm --no-deps --user root app sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
 else
 	@$(UV) run --frozen ruff format --check --no-cache app tests scripts
 	@$(UV) run --frozen ruff check --no-cache app tests scripts
