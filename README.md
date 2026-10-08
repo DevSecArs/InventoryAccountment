@@ -111,7 +111,7 @@ make down DOCKER=1
 проверяет наличие `/etc/InventoryAccountment/InventoryAccountment.env` и не
 создаёт и не перезаписывает рабочую конфигурацию. Обе команды устанавливают
 Python-зависимости из `uv.lock` и frontend-зависимости из
-`frontend/pnpm-lock.yaml`. `make run` запускает backend и frontend на `0.0.0.0`;
+`frontend/pnpm-lock.yaml`. `make run` запускает backend и frontend в фоне на `0.0.0.0`;
 `make up` собирает образы, публикует их порты на `0.0.0.0` и ожидает healthcheck
 сервисов,
 `make migrate` применяет Alembic-миграции к выбранному окружению. Команды

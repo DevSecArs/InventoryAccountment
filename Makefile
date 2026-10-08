@@ -5,6 +5,7 @@ DOCKER_RUN_ID ?= $(shell printf '%s' "$(CURDIR)" | cksum | awk '{print $$1}')
 UV_VERSION := 0.5.29
 PYTHON ?= python3
 UV := $(PYTHON) -m uv
+RUNTIME_DIR := reports/runtime
 PRODUCTION_ENV_FILE ?= /etc/InventoryAccountment/InventoryAccountment.env
 BACKUP ?=
 BASE_REF ?= main
@@ -31,7 +32,7 @@ DOCKER_PROJECT := inventory-accountment
 COMPOSE := docker compose --project-name $(DOCKER_PROJECT) --env-file $(ENV_FILE) -f docker-compose.yaml
 endif
 
-.PHONY: setup run up down status migrate test test-in-container quality mutation migration-check backup restore backup-restore-check lock-check secret-scan image-scan container-smoke verify check-docker-environment check-docker-project-clean check-working-tree-diff check-branch-diff
+.PHONY: setup run up down stop-local status migrate test test-in-container quality mutation migration-check backup restore backup-restore-check lock-check secret-scan image-scan container-smoke verify check-docker-environment check-docker-project-clean check-working-tree-diff check-branch-diff
 
 setup:
 	@$(PYTHON) --version
@@ -54,14 +55,35 @@ check-docker-environment:
 run:
 ifeq ($(DOCKER),1)
 	@$(MAKE) check-docker-environment DOCKER=1
-	@$(COMPOSE) up --build
+	@$(COMPOSE) up --build --detach --wait
 else
 	@set -eu; \
-	$(UV) run --frozen uvicorn app.main:app --host 0.0.0.0 --port "$${APP_PORT:-8000}" & backend_pid=$$!; \
-	cleanup() { kill "$$backend_pid" 2>/dev/null || true; }; \
-	trap cleanup EXIT HUP INT TERM; \
-	VITE_API_PROXY_TARGET="http://127.0.0.1:$${APP_PORT:-8000}" pnpm --dir frontend exec vite --host 0.0.0.0 --port "$${FRONTEND_PORT:-5173}"; \
-	trap - EXIT HUP INT TERM
+	runtime_dir="$(RUNTIME_DIR)"; \
+	mkdir -p "$$runtime_dir"; \
+	for service in backend frontend; do \
+		pid_file="$$runtime_dir/$$service.pid"; \
+		if [ -f "$$pid_file" ]; then \
+			pid=$$(cat "$$pid_file"); \
+			if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
+				echo "$$service уже запущен с PID $$pid; используйте make status или make down" >&2; \
+				exit 2; \
+			fi; \
+			rm -f "$$pid_file"; \
+		fi; \
+	done; \
+	nohup $(UV) run --frozen uvicorn app.main:app --host 0.0.0.0 --port "$${APP_PORT:-8000}" > "$$runtime_dir/backend.log" 2>&1 & echo $$! > "$$runtime_dir/backend.pid"; \
+	nohup env VITE_API_PROXY_TARGET="http://127.0.0.1:$${APP_PORT:-8000}" pnpm --dir frontend exec vite --host 0.0.0.0 --port "$${FRONTEND_PORT:-5173}" > "$$runtime_dir/frontend.log" 2>&1 & echo $$! > "$$runtime_dir/frontend.pid"; \
+	sleep 1; \
+	for service in backend frontend; do \
+		pid=$$(cat "$$runtime_dir/$$service.pid"); \
+		if ! kill -0 "$$pid" 2>/dev/null; then \
+			echo "$$service не запустился; смотрите $$runtime_dir/$$service.log" >&2; \
+			cat "$$runtime_dir/$$service.log" >&2 || true; \
+			$(MAKE) stop-local; \
+			exit 2; \
+		fi; \
+	done; \
+	echo "Backend и frontend запущены в фоне; используйте make status или make down"
 endif
 
 up:
@@ -75,8 +97,26 @@ ifeq ($(DOCKER),1)
 	@$(MAKE) check-docker-environment DOCKER=1
 	@$(COMPOSE) down --volumes --remove-orphans
 else
+	@$(MAKE) stop-local
 	@$(COMPOSE) down --remove-orphans
 endif
+
+stop-local:
+	@set -eu; \
+	runtime_dir="$(RUNTIME_DIR)"; \
+	stopped=0; \
+	for service in backend frontend; do \
+		pid_file="$$runtime_dir/$$service.pid"; \
+		if [ ! -f "$$pid_file" ]; then continue; fi; \
+		pid=$$(cat "$$pid_file"); \
+		if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
+			kill "$$pid" 2>/dev/null || true; \
+			echo "$$service остановлен (PID $$pid)"; \
+			stopped=1; \
+		fi; \
+		rm -f "$$pid_file"; \
+	done; \
+	if [ "$$stopped" -eq 0 ]; then echo "Фоновые процессы make run не найдены"; fi
 
 status:
 	@set -eu; \

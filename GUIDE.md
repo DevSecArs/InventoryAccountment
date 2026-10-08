@@ -44,7 +44,7 @@ make run
 ## Команды
 
 ```bash
-make run DOCKER=1              # запустить контур в foreground
+make run DOCKER=1              # запустить контур в фоне и дождаться healthcheck
 make up DOCKER=1               # собрать и дождаться healthcheck
 make down DOCKER=1             # удалить только тома текущего DOCKER-проекта
 make migrate DOCKER=1          # применить миграции к тестовой БД
@@ -136,15 +136,19 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Собрать образы тестового Compose-проекта.
-3. Запустить PostgreSQL, backend и frontend в foreground.
+3. Запустить PostgreSQL, backend и frontend в фоне.
 4. Опубликовать backend на `0.0.0.0:8001` и frontend на `0.0.0.0:5174`.
+5. Дождаться healthcheck сервисов и освободить терминал.
 
 ### `make run`
 
-1. Запустить Uvicorn через `python3 -m uv` на `0.0.0.0`.
-2. Загрузить настройки из `/etc/InventoryAccountment/InventoryAccountment.env`.
-3. Запустить Vite на `0.0.0.0` и порту из `FRONTEND_PORT`.
-4. Направить запросы frontend к локальному backend через Vite proxy.
+1. Создать `reports/runtime/` для PID-файлов и логов.
+2. Проверить отсутствие уже работающих backend и frontend, запущенных через `make run`.
+3. Запустить Uvicorn через `nohup` на `0.0.0.0` и записать PID и лог backend.
+4. Загрузить настройки backend из `/etc/InventoryAccountment/InventoryAccountment.env`.
+5. Запустить Vite через `nohup` на `0.0.0.0`, записать PID и лог frontend.
+6. Направить запросы frontend к локальному backend через Vite proxy.
+7. Проверить, что оба процесса не завершились сразу, и освободить терминал.
 
 ### `make up DOCKER=1`
 
@@ -172,9 +176,10 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 ### `make down`
 
 1. Передать `/etc/InventoryAccountment/InventoryAccountment.env` в Docker Compose.
-2. Остановить сервисы Compose-проекта.
-3. Удалить контейнеры, сети и ресурсы-сироты.
-4. Сохранить тома Compose-проекта.
+2. Остановить фоновые backend и frontend, запущенные через `make run`.
+3. Остановить сервисы Compose-проекта.
+4. Удалить контейнеры, сети и ресурсы-сироты.
+5. Сохранить тома Compose-проекта.
 
 ### `make migrate DOCKER=1`
 
