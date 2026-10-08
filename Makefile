@@ -199,13 +199,27 @@ ensure-pnpm-store:
 quality:
 ifeq ($(DOCKER),1)
 	@$(MAKE) check-docker-environment DOCKER=1
-	@$(COMPOSE) run --rm --user root app sh -c 'mkdir -p reports && ruff format --check --no-cache app tests scripts && ruff check --no-cache app tests scripts && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts && bandit -q -r app scripts -lll -f json -o reports/bandit.json && pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
+	@$(COMPOSE) run --rm --user root app sh -c 'mkdir -p reports && ruff format --check --no-cache app tests scripts && ruff check --no-cache app tests scripts && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts'
+	@echo '==> SAST: начинаю проверку Python-кода Bandit'
+	@set -eu; \
+	if $(COMPOSE) run --rm --user root app bandit -q -r app scripts -lll -f json -o reports/bandit.json; then \
+		echo '==> SAST: Bandit завершён успешно, отчёт: reports/bandit.json'; \
+	else \
+		status=$$?; echo '==> SAST: Bandit завершился с ошибкой, отчёт: reports/bandit.json' >&2; exit $$status; \
+	fi
+	@$(COMPOSE) run --rm --user root app sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
 else
 	@$(UV) run --frozen ruff format --check --no-cache app tests scripts
 	@$(UV) run --frozen ruff check --no-cache app tests scripts
 	@MYPY_CACHE_DIR=/tmp/mypy $(UV) run --frozen mypy app tests scripts
 	@mkdir -p reports
-	@$(UV) run --frozen bandit -q -r app scripts -lll -f json -o reports/bandit.json
+	@echo '==> SAST: начинаю проверку Python-кода Bandit'
+	@set -eu; \
+	if $(UV) run --frozen bandit -q -r app scripts -lll -f json -o reports/bandit.json; then \
+		echo '==> SAST: Bandit завершён успешно, отчёт: reports/bandit.json'; \
+	else \
+		status=$$?; echo '==> SAST: Bandit завершился с ошибкой, отчёт: reports/bandit.json' >&2; exit $$status; \
+	fi
 	@$(UV) run --frozen sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
 endif
 	@mkdir -p reports
@@ -322,7 +336,7 @@ verify:
 	trap cleanup EXIT HUP INT TERM; \
 	echo '==> Подготовка изолированного Docker-контура'; $(MAKE) check-docker-environment DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
 	echo '==> Проверка lock-файлов'; $(MAKE) lock-check DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
-	echo '==> Проверка качества'; $(MAKE) quality DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
+	echo '==> Проверка качества, включая SAST Bandit'; $(MAKE) quality DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
 	echo '==> Автоматические тесты'; $(MAKE) test DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
 	echo '==> Мутационная проверка'; $(MAKE) mutation DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
 	echo '==> Проверка миграций'; $(MAKE) migration-check DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \

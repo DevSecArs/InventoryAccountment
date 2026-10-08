@@ -216,7 +216,25 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 3. Проверить форматирование Python-кода через Ruff.
 4. Запустить Ruff lint.
 5. Запустить mypy.
-6. Запустить Bandit и записать отчёт в `reports/bandit.json`.
+6. Вывести сообщение о начале SAST-проверки Bandit.
+7. Запустить Bandit, вывести успешный либо ошибочный результат и записать отчёт в `reports/bandit.json`.
+8. Сформировать список Python-зависимостей.
+9. Запустить pip-audit и записать отчёт в `reports/pip-audit.json`.
+10. Собрать отдельный образ frontend-проверок.
+11. Подключить постоянный Docker-том с pnpm store.
+12. Установить frontend-зависимости с использованием кэша.
+13. Запустить frontend-проверки качества.
+14. Запустить frontend audit и записать отчёт в `reports/pnpm-audit.json`.
+15. Запустить `make secret-scan`.
+
+### `make quality`
+
+1. Проверить форматирование Python-кода через Ruff.
+2. Запустить Ruff lint.
+3. Запустить mypy.
+4. Создать каталог `reports`.
+5. Вывести сообщение о начале SAST-проверки Bandit.
+6. Запустить Bandit, вывести успешный либо ошибочный результат и записать отчёт в `reports/bandit.json`.
 7. Сформировать список Python-зависимостей.
 8. Запустить pip-audit и записать отчёт в `reports/pip-audit.json`.
 9. Собрать отдельный образ frontend-проверок.
@@ -225,22 +243,6 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 12. Запустить frontend-проверки качества.
 13. Запустить frontend audit и записать отчёт в `reports/pnpm-audit.json`.
 14. Запустить `make secret-scan`.
-
-### `make quality`
-
-1. Проверить форматирование Python-кода через Ruff.
-2. Запустить Ruff lint.
-3. Запустить mypy.
-4. Создать каталог `reports`.
-5. Запустить Bandit и записать отчёт в `reports/bandit.json`.
-6. Сформировать список Python-зависимостей.
-7. Запустить pip-audit и записать отчёт в `reports/pip-audit.json`.
-8. Собрать отдельный образ frontend-проверок.
-9. Подключить постоянный Docker-том с pnpm store.
-10. Установить frontend-зависимости с использованием кэша.
-11. Запустить frontend-проверки качества.
-12. Запустить frontend audit и записать отчёт в `reports/pnpm-audit.json`.
-13. Запустить `make secret-scan`.
 
 ### `make secret-scan`
 
@@ -365,7 +367,7 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 1. Проверить `.env.example` и параметры изолированного тестового Docker-контура независимо от переданного `DOCKER`.
 2. Зарегистрировать очистку ресурсов тестового Compose-проекта с сохранением внешнего pnpm store.
 3. Выполнить `make lock-check`.
-4. Выполнить `make quality DOCKER=1`.
+4. Вывести начало проверки качества и SAST, затем выполнить `make quality DOCKER=1` с сообщением об успешном либо ошибочном результате Bandit.
 5. Выполнить `make test`.
 6. Выполнить `make mutation DOCKER=1`.
 7. Выполнить `make migration-check DOCKER=1`.
