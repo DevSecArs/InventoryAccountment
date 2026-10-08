@@ -2,8 +2,10 @@
 
 ## Требования
 
-Нужны Git, GNU Make, Docker Desktop с Docker Compose, Python 3.11 (команда
-`python3`), Node.js 24 и pnpm 11.19.0. В Windows запускайте команды из WSL2 либо совместимого
+Для обычного локального запуска с внешней БД нужны Git, GNU Make, Python 3.11
+(команда `python3`), Node.js 24 и pnpm 11.19.0. Docker Desktop с Docker
+Compose нужен только для изолированного режима `LOCAL=1` и контейнерных
+проверок. В Windows запускайте Docker-команды из WSL2 либо совместимого
 Docker-исполнителя. Не сохраняйте в Git `.env`, дампы и отчёты.
 
 ## Первый запуск
@@ -12,6 +14,15 @@ Docker-исполнителя. Не сохраняйте в Git `.env`, дамп
 make setup LOCAL=1
 make up LOCAL=1
 make migrate LOCAL=1
+```
+
+Для запуска приложения без Docker, когда `DATABASE_URL` в `.env` указывает на
+внешний PostgreSQL, используйте:
+
+```bash
+make setup
+make migrate
+make run
 ```
 
 `LOCAL=1` использует только `.env.test`, базу с суффиксом `_test` и отдельный

@@ -7,10 +7,14 @@
 
 ## Что потребуется
 
-- Docker Desktop с поддержкой Docker Compose;
 - Python 3.11 и `uv 0.5.29` (команда `make setup` установит его при отсутствии);
 - Node.js 24 с npm и pnpm `11.19.0`;
 - PowerShell, открытый в корне репозитория.
+
+Docker Desktop с поддержкой Docker Compose нужен только для тестового
+контейнерного контура (`LOCAL=1`). Обычный `make setup`, `make migrate` и
+`make run` работают без Docker, если `DATABASE_URL` в `.env` указывает на
+доступный внешний PostgreSQL.
 
 Проверить Docker можно командой:
 

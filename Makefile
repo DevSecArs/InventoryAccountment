@@ -29,7 +29,9 @@ endif
 
 setup:
 	@$(PYTHON) --version
+ifeq ($(LOCAL),1)
 	@docker compose version
+endif
 	@node --version
 	@pnpm --version
 	@test -f $(ENV_FILE) || cp $(ENV_FILE).example $(ENV_FILE)
