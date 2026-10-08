@@ -3,6 +3,7 @@ SHELL := /bin/sh
 LOCAL ?= 0
 LOCAL_RUN_ID ?= $(shell printf '%s' "$(CURDIR)" | cksum | awk '{print $$1}')
 UV_VERSION := 0.5.29
+UV := python -m uv
 BACKUP ?=
 BASE_REF ?= main
 TARGET_DATABASE ?=
@@ -32,7 +33,7 @@ setup:
 	@pnpm --version
 	@test -f $(ENV_FILE) || cp $(ENV_FILE).example $(ENV_FILE)
 	@python -m pip install --user --break-system-packages "uv==$(UV_VERSION)"
-	@uv sync --frozen --extra dev
+	@$(UV) sync --frozen --extra dev
 	@pnpm --dir frontend install --frozen-lockfile --package-import-method=copy
 
 check-local-environment:
@@ -47,7 +48,7 @@ ifeq ($(LOCAL),1)
 	@$(MAKE) check-local-environment LOCAL=1
 	@$(COMPOSE) up --build
 else
-	@uv run --frozen uvicorn app.main:app --host 127.0.0.1 --port "$${APP_PORT:-8000}"
+	@$(UV) run --frozen uvicorn app.main:app --host 127.0.0.1 --port "$${APP_PORT:-8000}"
 endif
 
 up:
@@ -69,7 +70,7 @@ ifeq ($(LOCAL),1)
 	@$(MAKE) check-local-environment LOCAL=1
 	@$(COMPOSE) run --rm app alembic upgrade head
 else
-	@uv run --frozen alembic upgrade head
+	@$(UV) run --frozen alembic upgrade head
 endif
 
 test:
@@ -78,7 +79,7 @@ ifeq ($(LOCAL),1)
 	@$(COMPOSE) run --rm --user root app alembic upgrade head
 	@$(COMPOSE) run --rm --user root app pytest
 else
-	@uv run --frozen pytest
+	@$(UV) run --frozen pytest
 endif
 	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile && pnpm test:run'
 
@@ -87,12 +88,12 @@ ifeq ($(LOCAL),1)
 	@$(MAKE) check-local-environment LOCAL=1
 	@$(COMPOSE) run --rm --user root app sh -c 'mkdir -p reports && ruff format --check --no-cache app tests scripts && ruff check --no-cache app tests scripts && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts && bandit -q -r app scripts -lll -f json -o reports/bandit.json && pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
 else
-	@uv run --frozen ruff format --check --no-cache app tests scripts
-	@uv run --frozen ruff check --no-cache app tests scripts
-	@MYPY_CACHE_DIR=/tmp/mypy uv run --frozen mypy app tests scripts
+	@$(UV) run --frozen ruff format --check --no-cache app tests scripts
+	@$(UV) run --frozen ruff check --no-cache app tests scripts
+	@MYPY_CACHE_DIR=/tmp/mypy $(UV) run --frozen mypy app tests scripts
 	@mkdir -p reports
-	@uv run --frozen bandit -q -r app scripts -lll -f json -o reports/bandit.json
-	@uv run --frozen sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
+	@$(UV) run --frozen bandit -q -r app scripts -lll -f json -o reports/bandit.json
+	@$(UV) run --frozen sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
 endif
 	@mkdir -p reports
 	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" -v "$(CURDIR)/reports:/reports" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile && pnpm quality && pnpm audit --audit-level=high --json > /reports/pnpm-audit.json'
@@ -159,7 +160,7 @@ else
 endif
 
 lock-check:
-	@uv lock --check
+	@$(UV) lock --check
 	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile'
 
 container-check:

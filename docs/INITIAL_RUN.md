@@ -89,7 +89,7 @@ make migrate
 Проверить текущую ревизию можно командой:
 
 ```powershell
-uv run --frozen alembic current
+python -m uv run --frozen alembic current
 ```
 
 Затем в корне репозитория выполните:
