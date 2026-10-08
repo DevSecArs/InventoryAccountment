@@ -83,3 +83,48 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 Перед приёмкой запустите в чистой копии `make setup LOCAL=1`, затем
 `make verify LOCAL=1`. Локальный успех не заменяет публикацию ветки, CI,
 независимое одобрение, настройку CODEOWNERS и живую демонстрацию.
+
+## Пошаговые алгоритмы
+
+### `make setup LOCAL=1`
+
+1. Проверить версию Python.
+2. Проверить наличие Docker.
+3. Установить Docker Engine и Docker Compose при отсутствии.
+4. Проверить версию Docker Compose.
+5. Проверить версию Node.js.
+6. Проверить версию pnpm.
+7. Проверить наличие `.env.example`.
+8. Установить `uv` указанной версии через `python3 -m pip`.
+9. Установить Python-зависимости из `uv.lock`.
+10. Установить frontend-зависимости из `frontend/pnpm-lock.yaml`.
+
+### `make setup`
+
+1. Проверить версию Python.
+2. Проверить наличие Docker.
+3. Установить Docker Engine и Docker Compose при отсутствии.
+4. Проверить версию Docker Compose.
+5. Проверить версию Node.js.
+6. Проверить версию pnpm.
+7. Проверить наличие `/etc/InventoryAccountment/InventoryAccountment.env`.
+8. Установить `uv` указанной версии через `python3 -m pip`.
+9. Установить Python-зависимости из `uv.lock`.
+10. Установить frontend-зависимости из `frontend/pnpm-lock.yaml`.
+
+### `make test`
+
+1. Запустить `make test`.
+2. Передать в дочернюю команду `LOCAL=1`.
+3. Сформировать имя изолированного Compose-проекта с `LOCAL_RUN_ID`.
+4. Проверить, что существует `.env.example`.
+5. Проверить `APP_ENV=test` в `.env.example`.
+6. Проверить суффикс `_test` у имени тестовой БД в `.env.example`.
+7. Запустить тестовую PostgreSQL в изолированном Compose-контуре.
+8. Применить Alembic-миграции к тестовой БД.
+9. Запустить backend-тесты через `pytest` в Docker-контейнере приложения.
+10. Запустить временный Docker-контейнер Node.js.
+11. Скопировать в него исходники frontend без `node_modules`.
+12. Установить pnpm.
+13. Установить frontend-зависимости по `pnpm-lock.yaml`.
+14. Запустить frontend-тесты командой `pnpm test:run`.
