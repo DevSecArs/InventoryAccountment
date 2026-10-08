@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     APP_HOST: str = "0.0.0.0"
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file="/etc/InventoryAccountment/InventoryAccountment.env",
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",

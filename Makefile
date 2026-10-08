@@ -5,6 +5,7 @@ LOCAL_RUN_ID ?= $(shell printf '%s' "$(CURDIR)" | cksum | awk '{print $$1}')
 UV_VERSION := 0.5.29
 PYTHON ?= python3
 UV := $(PYTHON) -m uv
+PRODUCTION_ENV_FILE ?= /etc/InventoryAccountment/InventoryAccountment.env
 BACKUP ?=
 BASE_REF ?= main
 TARGET_DATABASE ?=
@@ -17,11 +18,11 @@ $(error Параметр TEST устарел. Используйте LOCAL=1 д�
 endif
 
 ifeq ($(LOCAL),1)
-ENV_FILE := .env.test
+ENV_FILE := .env.example
 LOCAL_PROJECT := inventory-accountment-local-$(LOCAL_RUN_ID)
 COMPOSE := docker compose --project-name $(LOCAL_PROJECT) --env-file $(ENV_FILE) -f compose.test.yaml
 else
-ENV_FILE := .env
+ENV_FILE := $(PRODUCTION_ENV_FILE)
 COMPOSE := docker compose --project-name inventory-accountment --env-file $(ENV_FILE) -f docker-compose.yaml
 endif
 
@@ -33,7 +34,7 @@ setup:
 	@docker compose version
 	@node --version
 	@pnpm --version
-	@test -f $(ENV_FILE) || cp $(ENV_FILE).example $(ENV_FILE)
+	@test -f $(ENV_FILE) || (echo "Нет файла конфигурации $(ENV_FILE)" >&2; exit 2)
 	@$(PYTHON) -m pip install --user --break-system-packages "uv==$(UV_VERSION)"
 	@$(UV) sync --frozen --extra dev
 	@pnpm --dir frontend install --frozen-lockfile --package-import-method=copy
@@ -41,9 +42,9 @@ setup:
 check-local-environment:
 	@test "$(LOCAL)" = "1" || (echo "Эта операция разрешена только с LOCAL=1" >&2; exit 2)
 	@test -n "$(LOCAL_RUN_ID)" || (echo "Укажите непустой LOCAL_RUN_ID" >&2; exit 2)
-	@test -f .env.test || (echo "Нет .env.test: выполните make setup LOCAL=1" >&2; exit 2)
-	@grep -qx 'APP_ENV=test' .env.test || (echo "APP_ENV в .env.test должен быть test" >&2; exit 2)
-	@grep -Eq '^POSTGRES_DB=.*_test$$' .env.test || (echo "Имя тестовой БД должно оканчиваться на _test" >&2; exit 2)
+	@test -f .env.example || (echo "Нет .env.example с настройками тестового контура" >&2; exit 2)
+	@grep -qx 'APP_ENV=test' .env.example || (echo "APP_ENV в .env.example должен быть test" >&2; exit 2)
+	@grep -Eq '^POSTGRES_DB=.*_test$$' .env.example || (echo "Имя тестовой БД в .env.example должно оканчиваться на _test" >&2; exit 2)
 
 run:
 ifeq ($(LOCAL),1)

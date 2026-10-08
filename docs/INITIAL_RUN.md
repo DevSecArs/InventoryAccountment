@@ -25,9 +25,9 @@ docker compose version
 
 ## 1. Подготовить изолированное окружение
 
-Для безопасной проверки изменений используйте тестовый режим. Он создаёт
-отсутствующий `.env.test` по безопасному примеру, устанавливает
-Python-зависимости строго из `uv.lock` и frontend-зависимости из
+Для безопасной проверки изменений используйте тестовый режим. Он использует
+безопасный `.env.example`, устанавливает Python-зависимости строго из `uv.lock`
+и frontend-зависимости из
 `pnpm-lock.yaml`:
 
 ```bash
@@ -59,29 +59,35 @@ Invoke-RestMethod http://127.0.0.1:8001/health/ready
 make down LOCAL=1
 ```
 
-## 3. Создать обычную локальную конфигурацию
+## 3. Создать рабочую конфигурацию
 
-Создайте `.env` из примера. Он игнорируется Git, поэтому локальные параметры
-и пароли не попадут в репозиторий.
+Для обычного запуска рабочий файл всегда находится по пути
+`/etc/InventoryAccountment/InventoryAccountment.env`. Создайте каталог и файл
+на Linux-сервере, ограничьте к нему доступ и укажите строку подключения к
+внешней PostgreSQL:
 
-```powershell
-Copy-Item .env.example .env
+```bash
+sudo install -d -m 750 /etc/InventoryAccountment
+sudoedit /etc/InventoryAccountment/InventoryAccountment.env
+sudo chmod 640 /etc/InventoryAccountment/InventoryAccountment.env
 ```
 
-Не коммитьте `.env` и не используйте примерный пароль `change-me-local` вне
-локальной разработки.
-
-## 4. Запустить обычную PostgreSQL
-
-В отдельном окне PowerShell выполните:
-
-```powershell
-docker compose -f docker-compose.yaml up -d db
-docker compose -f docker-compose.yaml ps
+```ini
+DATABASE_URL=postgresql+psycopg2://<USER>:<PASSWORD>@<DB_HOST>:5432/inventory
+APP_ENV=production
+APP_DEBUG=false
+APP_HOST=127.0.0.1
+APP_PORT=8000
 ```
 
-Сервис `db` публикует PostgreSQL на `127.0.0.1:5433`. Данные хранятся в томе
-`postgres_data`; обычная остановка контейнера том не удаляет.
+`.env.example` предназначен только для изолированного тестового контура; не
+копируйте его в рабочую конфигурацию и не коммитьте рабочий файл.
+
+## 4. Проверить доступность внешней PostgreSQL
+
+До запуска убедитесь, что адрес в `DATABASE_URL` доступен с сервера приложения
+и что у учётной записи есть права на миграции. Обычные команды не поднимают
+локальную БД: они используют подключение из системного файла конфигурации.
 
 ## 5. Запустить HTTP-сервер
 
@@ -166,7 +172,8 @@ make migrate
 
 Затем перезапустите HTTP-сервер и повторите запрос к API.
 
-Alembic использует тот же параметр `DATABASE_URL` из `.env`, что и приложение.
+Alembic использует тот же параметр `DATABASE_URL` из
+`/etc/InventoryAccountment/InventoryAccountment.env`, что и приложение.
 Если команда миграции сообщает `ModuleNotFoundError: No module named 'psycopg'`,
 проверьте, что запускаете её после установки зависимостей из корня репозитория:
 
@@ -177,12 +184,5 @@ make migrate
 
 ## Остановка
 
-Остановите frontend и HTTP-сервер сочетанием `Ctrl+C` в соответствующих окнах,
-затем остановите контейнер базы:
-
-```powershell
-docker compose -f docker-compose.yaml down
-```
-
-Команда не удаляет том `postgres_data`. Не используйте `down --volumes`, если
-не намерены удалить локальные данные PostgreSQL.
+Остановите frontend и HTTP-сервер сочетанием `Ctrl+C` в соответствующих окнах.
+Если запущен тестовый Docker-контур, остановите его командой `make down LOCAL=1`.

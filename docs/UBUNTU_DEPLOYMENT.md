@@ -170,8 +170,8 @@ make setup LOCAL=1 LOCAL_RUN_ID=ubuntu-verify
 
 **Краткое описание**
 
-Команда создаст `.env.test` из безопасного примера, установит закреплённые
-Python- и frontend-зависимости и не будет обращаться к рабочей БД. Значение
+Команда использует безопасный `.env.example`, установит закреплённые Python- и
+frontend-зависимости и не будет обращаться к рабочей БД. Значение
 `LOCAL_RUN_ID` нужно использовать без изменений во всех проверочных командах.
 
 ## 7. Запустить все обязательные тесты
@@ -245,44 +245,40 @@ echo "Все обязательные отчёты найдены"
 
 **Действие**
 
-Создайте `.env` с отдельным случайным паролем и закройте доступ к файлу другим
-пользователям сервера.
+Создайте системный файл конфигурации с параметрами внешней PostgreSQL и
+закройте доступ к нему другим пользователям сервера.
 
 **Готовый код**
 
 ```bash
 cd /opt/inventory-accountment
-umask 077
+sudo install -d -m 750 /etc/InventoryAccountment
+sudoedit /etc/InventoryAccountment/InventoryAccountment.env
+sudo chown root:inv_acc /etc/InventoryAccountment/InventoryAccountment.env
+sudo chmod 640 /etc/InventoryAccountment/InventoryAccountment.env
+```
 
-DB_PASSWORD="$(openssl rand -hex 24)"
+Укажите в открытом редакторе:
 
-cat > .env <<EOF
-DATABASE_URL=postgresql+psycopg2://inventory_app:${DB_PASSWORD}@127.0.0.1:5433/inventory
-POSTGRES_USER=inventory_app
-POSTGRES_PASSWORD=${DB_PASSWORD}
-POSTGRES_DB=inventory
-POSTGRES_PORT=5433
+```ini
+DATABASE_URL=postgresql+psycopg2://<USER>:<PASSWORD>@<DB_HOST>:5432/inventory
 APP_ENV=production
 APP_DEBUG=false
 APP_HOST=127.0.0.1
 APP_PORT=8000
-EOF
-
-chmod 600 .env
-unset DB_PASSWORD
 ```
 
 **Краткое описание**
 
-Рабочая конфигурация отделена от `.env.test`. PostgreSQL и API публикуются
-только на `127.0.0.1`, поэтому они недоступны напрямую из интернета. Файл
-`.env` содержит секрет и уже исключён из Git.
+Рабочая конфигурация отделена от `.env.example`, который используется только
+тестами. Файл `/etc/InventoryAccountment/InventoryAccountment.env` содержит
+секреты и не входит в Git.
 
-## 10. Запустить PostgreSQL и приложение
+## 10. Применить миграции и запустить приложение
 
 **Действие**
 
-Соберите рабочий образ, запустите сервисы и примените миграции.
+Примените миграции к внешней PostgreSQL и запустите приложение.
 
 **Готовый код**
 
@@ -290,41 +286,33 @@ unset DB_PASSWORD
 cd /opt/inventory-accountment
 export PATH="$HOME/.local/bin:$PATH"
 
-make up
 make migrate
+make run
 ```
 
 **Краткое описание**
 
-`make up` запускает PostgreSQL и FastAPI в фоне и ждёт успешных healthcheck.
-`make migrate` применяет все миграции Alembic к рабочей БД. Схему нельзя
-создавать вручную.
+`make migrate` применяет все миграции Alembic к рабочей БД, а `make run`
+запускает FastAPI с конфигурацией из системного файла. Схему нельзя создавать
+вручную.
 
 ## 11. Проверить запущенное приложение
 
 **Действие**
 
-Проверьте контейнеры и оба health-маршрута.
+Проверьте оба health-маршрута.
 
 **Готовый код**
 
 ```bash
-cd /opt/inventory-accountment
-
-docker compose \
-  --project-name inventory-accountment \
-  --env-file .env \
-  -f docker-compose.yaml \
-  ps
-
 curl --fail --show-error http://127.0.0.1:8000/health/live
 curl --fail --show-error http://127.0.0.1:8000/health/ready
 ```
 
 **Краткое описание**
 
-Оба запроса должны вернуть JSON со статусом `ok`, а контейнеры должны иметь
-состояние `healthy`. Проверка `ready` подтверждает доступность PostgreSQL.
+Оба запроса должны вернуть JSON со статусом `ok`. Проверка `ready` подтверждает
+доступность PostgreSQL.
 
 ## 12. Подключиться к API с рабочего компьютера
 

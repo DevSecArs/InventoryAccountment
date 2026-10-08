@@ -100,7 +100,7 @@ sudo ufw status numbered
 ## 3. Указать БД в настройках приложения
 
 На `app-server` в
-`/etc/inventory-accountment/inventory-accountment.env` укажите приватный адрес
+`/etc/InventoryAccountment/InventoryAccountment.env` укажите приватный адрес
 сервера БД:
 
 ```ini
