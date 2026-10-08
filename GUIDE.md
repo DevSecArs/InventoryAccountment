@@ -128,3 +128,217 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 12. Установить pnpm.
 13. Установить frontend-зависимости по `pnpm-lock.yaml`.
 14. Запустить frontend-тесты командой `pnpm test:run`.
+
+### `make run LOCAL=1`
+
+1. Проверить `.env.example` и параметры тестового окружения.
+2. Собрать образы тестового Compose-проекта.
+3. Запустить PostgreSQL и приложение в foreground.
+
+### `make run`
+
+1. Запустить Uvicorn через `python3 -m uv`.
+2. Загрузить настройки из `/etc/InventoryAccountment/InventoryAccountment.env`.
+3. Запустить приложение на `127.0.0.1` и порту из `APP_PORT`.
+
+### `make up LOCAL=1`
+
+1. Проверить `.env.example` и параметры тестового окружения.
+2. Собрать образы тестового Compose-проекта.
+3. Запустить сервисы в фоне.
+4. Дождаться healthcheck сервисов.
+
+### `make up`
+
+1. Передать `/etc/InventoryAccountment/InventoryAccountment.env` в Docker Compose.
+2. Собрать образы Compose-проекта.
+3. Запустить сервисы в фоне.
+4. Дождаться healthcheck сервисов.
+
+### `make down LOCAL=1`
+
+1. Проверить `.env.example` и параметры тестового окружения.
+2. Остановить сервисы тестового Compose-проекта.
+3. Удалить контейнеры, сети и тома тестового Compose-проекта.
+4. Удалить изолированные ресурсы-сироты тестового Compose-проекта.
+
+### `make down`
+
+1. Передать `/etc/InventoryAccountment/InventoryAccountment.env` в Docker Compose.
+2. Остановить сервисы Compose-проекта.
+3. Удалить контейнеры, сети и ресурсы-сироты.
+4. Сохранить тома Compose-проекта.
+
+### `make migrate LOCAL=1`
+
+1. Проверить `.env.example` и параметры тестового окружения.
+2. Запустить временный контейнер приложения.
+3. Применить Alembic-миграции к тестовой БД.
+4. Удалить временный контейнер приложения.
+
+### `make migrate`
+
+1. Загрузить настройки из `/etc/InventoryAccountment/InventoryAccountment.env`.
+2. Применить Alembic-миграции через `python3 -m uv`.
+
+### `make test-in-container`
+
+1. Проверить `.env.example` и параметры тестового окружения.
+2. Применить Alembic-миграции к тестовой БД во временном контейнере приложения.
+3. Запустить backend-тесты через `pytest` во временном контейнере приложения.
+4. Запустить временный Docker-контейнер Node.js.
+5. Скопировать в него исходники frontend без `node_modules`.
+6. Установить pnpm и frontend-зависимости.
+7. Запустить frontend-тесты командой `pnpm test:run`.
+
+### `make quality LOCAL=1`
+
+1. Проверить `.env.example` и параметры тестового окружения.
+2. Создать каталог `reports`.
+3. Проверить форматирование Python-кода через Ruff.
+4. Запустить Ruff lint.
+5. Запустить mypy.
+6. Запустить Bandit и записать отчёт в `reports/bandit.json`.
+7. Сформировать список Python-зависимостей.
+8. Запустить pip-audit и записать отчёт в `reports/pip-audit.json`.
+9. Запустить временный Docker-контейнер Node.js.
+10. Установить frontend-зависимости.
+11. Запустить frontend-проверки качества.
+12. Запустить frontend audit и записать отчёт в `reports/pnpm-audit.json`.
+13. Запустить `make secret-scan`.
+
+### `make quality`
+
+1. Проверить форматирование Python-кода через Ruff.
+2. Запустить Ruff lint.
+3. Запустить mypy.
+4. Создать каталог `reports`.
+5. Запустить Bandit и записать отчёт в `reports/bandit.json`.
+6. Сформировать список Python-зависимостей.
+7. Запустить pip-audit и записать отчёт в `reports/pip-audit.json`.
+8. Запустить временный Docker-контейнер Node.js.
+9. Установить frontend-зависимости.
+10. Запустить frontend-проверки качества.
+11. Запустить frontend audit и записать отчёт в `reports/pnpm-audit.json`.
+12. Запустить `make secret-scan`.
+
+### `make secret-scan`
+
+1. Создать каталог `reports`.
+2. Запустить Gitleaks в Docker-контейнере.
+3. Проверить рабочую копию репозитория на секреты.
+4. Записать обезличенный отчёт в `reports/gitleaks.json`.
+
+### `make image-scan IMAGE_ID=<идентификатор>`
+
+1. Проверить, что передан `IMAGE_ID`.
+2. Создать каталог `reports`.
+3. Проверить существование образа Docker.
+4. Запустить Trivy в Docker-контейнере.
+5. Проверить образ на уязвимости высокого и критического уровня.
+6. Записать отчёт в `reports/trivy-image.json`.
+
+### `make mutation LOCAL=1`
+
+1. Проверить `.env.example` и параметры тестового окружения.
+2. Применить Alembic-миграции к тестовой БД.
+3. Запустить `scripts/check_critical_mutations.py` без расчёта покрытия.
+
+### `make migration-check LOCAL=1`
+
+1. Проверить `.env.example` и параметры тестового окружения.
+2. Запустить `scripts/migration_check.py` во временном контейнере приложения.
+
+### `make backup LOCAL=1`
+
+1. Проверить `.env.example` и параметры тестового окружения.
+2. Запустить временный контейнер `pg-tools`.
+3. Создать дамп тестовой БД в `backups/`.
+
+### `make backup`
+
+1. Передать `/etc/InventoryAccountment/InventoryAccountment.env` в Docker Compose.
+2. Запустить временный контейнер `pg-tools`.
+3. Создать дамп БД в `backups/`.
+
+### `make restore BACKUP=backups/<имя>.dump LOCAL=1`
+
+1. Проверить `.env.example` и параметры тестового окружения.
+2. Проверить наличие параметра `BACKUP`.
+3. Проверить путь `BACKUP` в каталоге `backups/`.
+4. Передать параметры целевой БД в контейнер `pg-tools`.
+5. Запустить восстановление из указанного дампа.
+
+### `make restore BACKUP=backups/<имя>.dump`
+
+1. Передать `/etc/InventoryAccountment/InventoryAccountment.env` в Docker Compose.
+2. Проверить наличие параметра `BACKUP`.
+3. Проверить путь `BACKUP` в каталоге `backups/`.
+4. Передать параметры целевой БД в контейнер `pg-tools`.
+5. Запустить восстановление из указанного дампа.
+
+### `make backup-restore-check LOCAL=1`
+
+1. Проверить `.env.example` и параметры тестового окружения.
+2. Применить Alembic-миграции к тестовой БД.
+3. Запустить `scripts/backup_restore_check.sh`.
+4. Создать дамп, повредить тестовые данные и восстановить их.
+5. Проверить восстановленные данные.
+
+### `make lock-check`
+
+1. Проверить соответствие `uv.lock` зависимостям проекта.
+2. Запустить временный Docker-контейнер Node.js.
+3. Скопировать исходники frontend без `node_modules`.
+4. Установить frontend-зависимости по `pnpm-lock.yaml`.
+
+### `make container-check LOCAL=1`
+
+1. Проверить `.env.example` и параметры тестового окружения.
+2. Зарегистрировать очистку ресурсов тестового Compose-проекта.
+3. Собрать образы и запустить сервисы в фоне.
+4. Дождаться healthcheck сервисов.
+5. Запустить `make image-scan` для образа приложения.
+6. Применить Alembic-миграции к тестовой БД.
+7. Запустить `scripts/container_smoke.py` в контейнере приложения.
+8. Вывести состояние сервисов Compose-проекта.
+9. Удалить контейнеры, сети, тома и ресурсы-сироты тестового Compose-проекта.
+
+### `make check-local-environment LOCAL=1`
+
+1. Проверить значение `LOCAL=1`.
+2. Проверить непустое значение `LOCAL_RUN_ID`.
+3. Проверить наличие `.env.example`.
+4. Проверить значение `APP_ENV=test` в `.env.example`.
+5. Проверить суффикс `_test` у `POSTGRES_DB` в `.env.example`.
+
+### `make check-local-project-clean LOCAL=1`
+
+1. Выполнить `make check-local-environment LOCAL=1`.
+2. Проверить отсутствие контейнеров тестового Compose-проекта.
+3. Проверить отсутствие томов тестового Compose-проекта.
+
+### `make check-working-tree-diff`
+
+1. Проверить рабочую копию командой `git diff --check`.
+
+### `make check-branch-diff`
+
+1. Определить общую базу текущей ветки и `BASE_REF`.
+2. Проверить веточную разницу командой `git diff --check`.
+
+### `make verify LOCAL=1`
+
+1. Проверить `.env.example` и параметры тестового окружения.
+2. Зарегистрировать очистку ресурсов тестового Compose-проекта.
+3. Выполнить `make lock-check`.
+4. Выполнить `make quality LOCAL=1`.
+5. Выполнить `make test`.
+6. Выполнить `make mutation LOCAL=1`.
+7. Выполнить `make migration-check LOCAL=1`.
+8. Выполнить `make backup-restore-check LOCAL=1`.
+9. Выполнить `make container-check LOCAL=1`.
+10. Выполнить `make check-local-project-clean LOCAL=1`.
+11. Выполнить `make check-working-tree-diff`.
+12. Выполнить `make check-branch-diff`.
+13. Удалить контейнеры, сети, тома и ресурсы-сироты тестового Compose-проекта.
