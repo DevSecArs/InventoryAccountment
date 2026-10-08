@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   verify:
-    name: make verify LOCAL=1
+    name: make verify DOCKER=1
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -34,10 +34,10 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Подготовить окружение
-        run: make setup LOCAL=1
+        run: make setup DOCKER=1
 
       - name: Выполнить обязательный контур
-        run: make verify LOCAL=1
+        run: make verify DOCKER=1
 
       - name: Сохранить отчёты
         if: always()

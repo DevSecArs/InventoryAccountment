@@ -8,7 +8,7 @@
 
 - [Краткое техническое задание](docs/Техническое_задание.md) — функции, модель данных, ограничения, ошибки, хранение и приёмка.
 - [Первоначальный запуск](docs/INITIAL_RUN.md) — запуск текущего каркаса, проверки и известные ограничения.
-- [Развёртывание на Ubuntu Server](docs/UBUNTU_DEPLOYMENT.md) — установка инструментов, полный `make verify LOCAL=1`, запуск, миграции и health-check.
+- [Развёртывание на Ubuntu Server](docs/UBUNTU_DEPLOYMENT.md) — установка инструментов, полный `make verify DOCKER=1`, запуск, миграции и health-check.
 - [Запуск как службы systemd](docs/SYSTEMD_SERVICE.md) — запуск API напрямую из исходного кода на Linux, управление и автозапуск.
 - [Firewall для API и PostgreSQL](docs/FIREWALL.md) — доступ клиентов к API и ограничение PostgreSQL сервером приложения.
 - [Повторяемое развёртывание без Docker](docs/DEPLOY_SCRIPT.md) — идемпотентный скрипт установки, обновления, systemd и UFW.
@@ -80,34 +80,34 @@ main → http → entities → postgresql
 
 На текущем этапе реализованы первые команды контура разработки: `setup`, `run`,
 `up`, `down` и `migrate`. Для безопасной проверки используется отдельный режим
-`LOCAL=1`: он читает только безопасный `.env.example`, использует БД с
+`DOCKER=1`: он читает только безопасный `.env.example`, использует БД с
 суффиксом `_test` и временный Docker-том. Обычный режим проверяет наличие
 `/etc/InventoryAccountment/InventoryAccountment.env`; его остановка не удаляет
 том PostgreSQL.
 
 Имя Compose-проекта локального контура содержит хеш пути рабочей копии. Для
 параллельных запусков из одной рабочей копии задайте разный
-`LOCAL_RUN_ID`, и используйте его во всех командах одного запуска, например
-`make up LOCAL=1 LOCAL_RUN_ID=review-a`. Без этого параметра команды из одной
+`DOCKER_RUN_ID`, и используйте его во всех командах одного запуска, например
+`make up DOCKER=1 DOCKER_RUN_ID=review-a`. Без этого параметра команды из одной
 рабочей копии выполняйте последовательно.
 
 ```bash
-make setup LOCAL=1
-make up LOCAL=1
-make migrate LOCAL=1
+make setup DOCKER=1
+make up DOCKER=1
+make migrate DOCKER=1
 make test
-make quality LOCAL=1
-make mutation LOCAL=1
-make migration-check LOCAL=1
-make backup LOCAL=1
-make backup-restore-check LOCAL=1
-make container-check LOCAL=1
-make verify LOCAL=1
+make quality DOCKER=1
+make mutation DOCKER=1
+make migration-check DOCKER=1
+make backup DOCKER=1
+make backup-restore-check DOCKER=1
+make container-check DOCKER=1
+make verify DOCKER=1
 # Проверки здоровья: http://127.0.0.1:8001/health/live и /health/ready
-make down LOCAL=1
+make down DOCKER=1
 ```
 
-`make setup LOCAL=1` использует безопасный `.env.example`; обычный `make setup`
+`make setup DOCKER=1` использует безопасный `.env.example`; обычный `make setup`
 проверяет наличие `/etc/InventoryAccountment/InventoryAccountment.env` и не
 создаёт и не перезаписывает рабочую конфигурацию. Обе команды устанавливают
 Python-зависимости из `uv.lock` и frontend-зависимости из
@@ -117,11 +117,11 @@ Python-зависимости из `uv.lock` и frontend-зависимости 
 frontend-тесты и формирует игнорируемые Git отчёты JUnit, XML и HTML coverage
 в `reports/`. `make quality` проверяет форматирование, статический анализ,
 SAST, известные уязвимости зависимостей и frontend без изменения исходников.
-`make mutation LOCAL=1` запускает в изолированном контуре контролируемые
+`make mutation DOCKER=1` запускает в изолированном контуре контролируемые
 мутации проверки количества, уникальности позиции, архивных ссылок, статуса
 черновика, CSRF, роли и readiness. Каждая мутация выполняет один целевой тест
 с тайм-аутом 30 секунд: успешный тест, тайм-аут или ошибка подготовки означают
-отказ проверки. `make migration-check LOCAL=1`
+отказ проверки. `make migration-check DOCKER=1`
 создаёт отдельные временные БД и проверяет создание чистой схемы, обновление
 заполненной базы и round-trip последней миграции. `make backup` создаёт
 custom-дамп в игнорируемом `backups/` и выводит путь, UTC-время, SHA-256 и
@@ -129,18 +129,18 @@ Alembic revision без реквизитов доступа. `make restore BACKU
 проверяет метаданные и по умолчанию создаёт новую БД. Замена существующей БД
 возможна только при `RESTORE_EXISTING=1`, заданных `TARGET_DATABASE_URL`,
 `TARGET_DATABASE` и совпадающем `CONFIRM_TARGET_DATABASE`. Автоматическая
-`make backup-restore-check LOCAL=1` создаёт связанные тестовые данные, намеренно
+`make backup-restore-check DOCKER=1` создаёт связанные тестовые данные, намеренно
 повреждает исходную тестовую БД, восстанавливает дамп в отдельную временную БД,
 сверяет связи, количество строк и версию схемы, затем удаляет временные БД и
 дампы своего запуска.
 
-`make container-check LOCAL=1` собирает актуальный test-образ, применяет
+`make container-check DOCKER=1` собирает актуальный test-образ, применяет
 миграции и выполняет HTTP smoke-сценарий через запущенный API: readiness,
 регистрацию администратора и создание с последующим чтением единицы измерения.
 После завершения, включая ошибочный, удаляются только контейнеры и тома
 тестового Compose-проекта.
 
-`make verify LOCAL=1` — единственная обязательная команда перед запросом на
+`make verify DOCKER=1` — единственная обязательная команда перед запросом на
 слияние. Она печатает и последовательно выполняет следующие блокирующие шаги:
 
 1. Проверяет Python- и frontend-lock-файлы; отказ означает, что зависимости
@@ -161,7 +161,7 @@ Alembic revision без реквизитов доступа. `make restore BACKU
    или тома тестового Compose-проекта, и выполняет `git diff --check`.
 
 При первой ошибке выполнение прекращается, а тестовые Docker-ресурсы удаляются.
-GitHub Actions вызывает именно `make verify LOCAL=1`, не дублируя его шаги, и
+GitHub Actions вызывает именно `make verify DOCKER=1`, не дублируя его шаги, и
 загружает каталог `reports/` даже при неуспехе. Успешный локальный запуск не
 равнозначен успешному CI, слиянию или релизу.
 

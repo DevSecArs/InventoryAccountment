@@ -12,9 +12,9 @@ Docker Engine с Compose и попросит повторно войти в SSH-
 ## Первый запуск
 
 ```bash
-make setup LOCAL=1
-make up LOCAL=1
-make migrate LOCAL=1
+make setup DOCKER=1
+make up DOCKER=1
+make migrate DOCKER=1
 ```
 
 Для запуска приложения с внешней PostgreSQL создайте
@@ -30,28 +30,27 @@ make run
 Сам API в этом сценарии запускается напрямую, но `make setup` всё равно
 готовит Docker, потому что `make test` всегда выполняется изолированно.
 
-`LOCAL=1` использует только безопасный `.env.example`, базу с суффиксом `_test`
+`DOCKER=1` использует только безопасный `.env.example`, базу с суффиксом `_test`
 и отдельный Compose-проект. Для двух запусков в одной рабочей копии укажите свой
-`LOCAL_RUN_ID` во всех командах одного запуска.
+`DOCKER_RUN_ID` во всех командах одного запуска.
 
-Старое имя публичного параметра запрещено намеренно. Передача этого имени
-завершится ошибкой с подсказкой использовать `LOCAL=1`; внутренние `APP_ENV=test`,
-`TEST_DATABASE_URL` сохраняет своё имя.
+Передача `LOCAL=1` завершится ошибкой с подсказкой использовать `DOCKER=1`.
+Внутренние `APP_ENV=test` и `TEST_DATABASE_URL` сохраняют свои имена.
 
 ## Команды
 
 ```bash
-make run LOCAL=1              # запустить контур в foreground
-make up LOCAL=1               # собрать и дождаться healthcheck
-make down LOCAL=1             # удалить только тома текущего LOCAL-проекта
-make migrate LOCAL=1          # применить миграции к тестовой БД
+make run DOCKER=1              # запустить контур в foreground
+make up DOCKER=1               # собрать и дождаться healthcheck
+make down DOCKER=1             # удалить только тома текущего DOCKER-проекта
+make migrate DOCKER=1          # применить миграции к тестовой БД
 make test                     # всегда изолированные backend/frontend тесты и coverage
-make quality LOCAL=1          # формат, lint, typing, SAST, dependency и secret scan
-make mutation LOCAL=1         # критические контролируемые мутации
-make backup LOCAL=1           # создать проверяемый дамп в backups/
-make restore LOCAL=1 BACKUP=backups/<имя>.dump
-make container-check LOCAL=1  # собрать, scan образа и выполнить HTTP smoke
-make verify LOCAL=1           # полный блокирующий контур
+make quality DOCKER=1          # формат, lint, typing, SAST, dependency и secret scan
+make mutation DOCKER=1         # критические контролируемые мутации
+make backup DOCKER=1           # создать проверяемый дамп в backups/
+make restore DOCKER=1 BACKUP=backups/<имя>.dump
+make container-check DOCKER=1  # собрать, scan образа и выполнить HTTP smoke
+make verify DOCKER=1           # полный блокирующий контур
 ```
 
 `make restore` по умолчанию восстанавливает в отдельную БД. Перезапись
@@ -74,19 +73,19 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 
 ## Диагностика и безопасная очистка
 
-При сбое сначала прочтите название шага verify и его лог. `make down LOCAL=1`
-удаляет исключительно Compose-ресурсы выбранного `LOCAL_RUN_ID`; обычный
+При сбое сначала прочтите название шага verify и его лог. `make down DOCKER=1`
+удаляет исключительно Compose-ресурсы выбранного `DOCKER_RUN_ID`; обычный
 `make down` не удаляет тома. Если проверка была прервана, выполните
-`make down LOCAL=1 LOCAL_RUN_ID=<тот же id>`, затем повторите целевой шаг и
-`make verify LOCAL=1`.
+`make down DOCKER=1 DOCKER_RUN_ID=<тот же id>`, затем повторите целевой шаг и
+`make verify DOCKER=1`.
 
-Перед приёмкой запустите в чистой копии `make setup LOCAL=1`, затем
-`make verify LOCAL=1`. Локальный успех не заменяет публикацию ветки, CI,
+Перед приёмкой запустите в чистой копии `make setup DOCKER=1`, затем
+`make verify DOCKER=1`. Локальный успех не заменяет публикацию ветки, CI,
 независимое одобрение, настройку CODEOWNERS и живую демонстрацию.
 
 ## Пошаговые алгоритмы
 
-### `make setup LOCAL=1`
+### `make setup DOCKER=1`
 
 1. Проверить версию Python.
 2. Проверить наличие Docker.
@@ -115,8 +114,8 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 ### `make test`
 
 1. Запустить `make test`.
-2. Передать в дочернюю команду `LOCAL=1`.
-3. Сформировать имя изолированного Compose-проекта с `LOCAL_RUN_ID`.
+2. Передать в дочернюю команду `DOCKER=1`.
+3. Сформировать имя изолированного Compose-проекта с `DOCKER_RUN_ID`.
 4. Проверить, что существует `.env.example`.
 5. Проверить `APP_ENV=test` в `.env.example`.
 6. Проверить суффикс `_test` у имени тестовой БД в `.env.example`.
@@ -129,7 +128,7 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 13. Установить frontend-зависимости по `pnpm-lock.yaml`.
 14. Запустить frontend-тесты командой `pnpm test:run`.
 
-### `make run LOCAL=1`
+### `make run DOCKER=1`
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Собрать образы тестового Compose-проекта.
@@ -141,7 +140,7 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 2. Загрузить настройки из `/etc/InventoryAccountment/InventoryAccountment.env`.
 3. Запустить приложение на `127.0.0.1` и порту из `APP_PORT`.
 
-### `make up LOCAL=1`
+### `make up DOCKER=1`
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Собрать образы тестового Compose-проекта.
@@ -155,7 +154,7 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 3. Запустить сервисы в фоне.
 4. Дождаться healthcheck сервисов.
 
-### `make down LOCAL=1`
+### `make down DOCKER=1`
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Остановить сервисы тестового Compose-проекта.
@@ -169,7 +168,7 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 3. Удалить контейнеры, сети и ресурсы-сироты.
 4. Сохранить тома Compose-проекта.
 
-### `make migrate LOCAL=1`
+### `make migrate DOCKER=1`
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Запустить временный контейнер приложения.
@@ -191,7 +190,7 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 6. Установить pnpm и frontend-зависимости.
 7. Запустить frontend-тесты командой `pnpm test:run`.
 
-### `make quality LOCAL=1`
+### `make quality DOCKER=1`
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Создать каталог `reports`.
@@ -238,18 +237,18 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 5. Проверить образ на уязвимости высокого и критического уровня.
 6. Записать отчёт в `reports/trivy-image.json`.
 
-### `make mutation LOCAL=1`
+### `make mutation DOCKER=1`
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Применить Alembic-миграции к тестовой БД.
 3. Запустить `scripts/check_critical_mutations.py` без расчёта покрытия.
 
-### `make migration-check LOCAL=1`
+### `make migration-check DOCKER=1`
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Запустить `scripts/migration_check.py` во временном контейнере приложения.
 
-### `make backup LOCAL=1`
+### `make backup DOCKER=1`
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Запустить временный контейнер `pg-tools`.
@@ -261,7 +260,7 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 2. Запустить временный контейнер `pg-tools`.
 3. Создать дамп БД в `backups/`.
 
-### `make restore BACKUP=backups/<имя>.dump LOCAL=1`
+### `make restore BACKUP=backups/<имя>.dump DOCKER=1`
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Проверить наличие параметра `BACKUP`.
@@ -277,7 +276,7 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 4. Передать параметры целевой БД в контейнер `pg-tools`.
 5. Запустить восстановление из указанного дампа.
 
-### `make backup-restore-check LOCAL=1`
+### `make backup-restore-check DOCKER=1`
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Применить Alembic-миграции к тестовой БД.
@@ -292,7 +291,7 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 3. Скопировать исходники frontend без `node_modules`.
 4. Установить frontend-зависимости по `pnpm-lock.yaml`.
 
-### `make container-check LOCAL=1`
+### `make container-check DOCKER=1`
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Зарегистрировать очистку ресурсов тестового Compose-проекта.
@@ -304,17 +303,17 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 8. Вывести состояние сервисов Compose-проекта.
 9. Удалить контейнеры, сети, тома и ресурсы-сироты тестового Compose-проекта.
 
-### `make check-local-environment LOCAL=1`
+### `make check-docker-environment DOCKER=1`
 
-1. Проверить значение `LOCAL=1`.
-2. Проверить непустое значение `LOCAL_RUN_ID`.
+1. Проверить значение `DOCKER=1`.
+2. Проверить непустое значение `DOCKER_RUN_ID`.
 3. Проверить наличие `.env.example`.
 4. Проверить значение `APP_ENV=test` в `.env.example`.
 5. Проверить суффикс `_test` у `POSTGRES_DB` в `.env.example`.
 
-### `make check-local-project-clean LOCAL=1`
+### `make check-docker-project-clean DOCKER=1`
 
-1. Выполнить `make check-local-environment LOCAL=1`.
+1. Выполнить `make check-docker-environment DOCKER=1`.
 2. Проверить отсутствие контейнеров тестового Compose-проекта.
 3. Проверить отсутствие томов тестового Compose-проекта.
 
@@ -327,18 +326,18 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 1. Определить общую базу текущей ветки и `BASE_REF`.
 2. Проверить веточную разницу командой `git diff --check`.
 
-### `make verify LOCAL=1`
+### `make verify DOCKER=1`
 
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Зарегистрировать очистку ресурсов тестового Compose-проекта.
 3. Выполнить `make lock-check`.
-4. Выполнить `make quality LOCAL=1`.
+4. Выполнить `make quality DOCKER=1`.
 5. Выполнить `make test`.
-6. Выполнить `make mutation LOCAL=1`.
-7. Выполнить `make migration-check LOCAL=1`.
-8. Выполнить `make backup-restore-check LOCAL=1`.
-9. Выполнить `make container-check LOCAL=1`.
-10. Выполнить `make check-local-project-clean LOCAL=1`.
+6. Выполнить `make mutation DOCKER=1`.
+7. Выполнить `make migration-check DOCKER=1`.
+8. Выполнить `make backup-restore-check DOCKER=1`.
+9. Выполнить `make container-check DOCKER=1`.
+10. Выполнить `make check-docker-project-clean DOCKER=1`.
 11. Выполнить `make check-working-tree-diff`.
 12. Выполнить `make check-branch-diff`.
 13. Удалить контейнеры, сети, тома и ресурсы-сироты тестового Compose-проекта.

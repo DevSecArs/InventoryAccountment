@@ -1,7 +1,7 @@
 SHELL := /bin/sh
 
-LOCAL ?= 0
-LOCAL_RUN_ID ?= $(shell printf '%s' "$(CURDIR)" | cksum | awk '{print $$1}')
+DOCKER ?= 0
+DOCKER_RUN_ID ?= $(shell printf '%s' "$(CURDIR)" | cksum | awk '{print $$1}')
 UV_VERSION := 0.5.29
 PYTHON ?= python3
 UV := $(PYTHON) -m uv
@@ -14,19 +14,23 @@ CONFIRM_TARGET_DATABASE ?=
 RESTORE_EXISTING ?= 0
 
 ifneq ($(filter TEST,$(.VARIABLES)),)
-$(error Параметр TEST устарел. Используйте LOCAL=1 для изолированного локального контура)
+$(error Параметр TEST устарел. Используйте DOCKER=1 для изолированного локального контура)
 endif
 
-ifeq ($(LOCAL),1)
+ifneq ($(filter LOCAL,$(.VARIABLES)),)
+$(error Параметр LOCAL переименован. Используйте DOCKER=1 для изолированного Docker-контура)
+endif
+
+ifeq ($(DOCKER),1)
 ENV_FILE := .env.example
-LOCAL_PROJECT := inventory-accountment-local-$(LOCAL_RUN_ID)
-COMPOSE := docker compose --project-name $(LOCAL_PROJECT) --env-file $(ENV_FILE) -f compose.test.yaml
+DOCKER_PROJECT := inventory-accountment-local-$(DOCKER_RUN_ID)
+COMPOSE := docker compose --project-name $(DOCKER_PROJECT) --env-file $(ENV_FILE) -f compose.test.yaml
 else
 ENV_FILE := $(PRODUCTION_ENV_FILE)
 COMPOSE := docker compose --project-name inventory-accountment --env-file $(ENV_FILE) -f docker-compose.yaml
 endif
 
-.PHONY: setup run up down migrate test test-in-container quality mutation migration-check backup restore backup-restore-check lock-check secret-scan image-scan container-check verify check-local-environment check-local-project-clean check-working-tree-diff check-branch-diff
+.PHONY: setup run up down migrate test test-in-container quality mutation migration-check backup restore backup-restore-check lock-check secret-scan image-scan container-check verify check-docker-environment check-docker-project-clean check-working-tree-diff check-branch-diff
 
 setup:
 	@$(PYTHON) --version
@@ -39,55 +43,55 @@ setup:
 	@$(UV) sync --frozen --extra dev
 	@pnpm --dir frontend install --frozen-lockfile --package-import-method=copy
 
-check-local-environment:
-	@test "$(LOCAL)" = "1" || (echo "Эта операция разрешена только с LOCAL=1" >&2; exit 2)
-	@test -n "$(LOCAL_RUN_ID)" || (echo "Укажите непустой LOCAL_RUN_ID" >&2; exit 2)
+check-docker-environment:
+	@test "$(DOCKER)" = "1" || (echo "Эта операция разрешена только с DOCKER=1" >&2; exit 2)
+	@test -n "$(DOCKER_RUN_ID)" || (echo "Укажите непустой DOCKER_RUN_ID" >&2; exit 2)
 	@test -f .env.example || (echo "Нет .env.example с настройками тестового контура" >&2; exit 2)
 	@grep -qx 'APP_ENV=test' .env.example || (echo "APP_ENV в .env.example должен быть test" >&2; exit 2)
 	@grep -Eq '^POSTGRES_DB=.*_test$$' .env.example || (echo "Имя тестовой БД в .env.example должно оканчиваться на _test" >&2; exit 2)
 
 run:
-ifeq ($(LOCAL),1)
-	@$(MAKE) check-local-environment LOCAL=1
+ifeq ($(DOCKER),1)
+	@$(MAKE) check-docker-environment DOCKER=1
 	@$(COMPOSE) up --build
 else
 	@$(UV) run --frozen uvicorn app.main:app --host 127.0.0.1 --port "$${APP_PORT:-8000}"
 endif
 
 up:
-ifeq ($(LOCAL),1)
-	@$(MAKE) check-local-environment LOCAL=1
+ifeq ($(DOCKER),1)
+	@$(MAKE) check-docker-environment DOCKER=1
 endif
 	@$(COMPOSE) up --build --detach --wait
 
 down:
-ifeq ($(LOCAL),1)
-	@$(MAKE) check-local-environment LOCAL=1
+ifeq ($(DOCKER),1)
+	@$(MAKE) check-docker-environment DOCKER=1
 	@$(COMPOSE) down --volumes --remove-orphans
 else
 	@$(COMPOSE) down --remove-orphans
 endif
 
 migrate:
-ifeq ($(LOCAL),1)
-	@$(MAKE) check-local-environment LOCAL=1
+ifeq ($(DOCKER),1)
+	@$(MAKE) check-docker-environment DOCKER=1
 	@$(COMPOSE) run --rm app alembic upgrade head
 else
 	@$(UV) run --frozen alembic upgrade head
 endif
 
 test:
-	@$(MAKE) test-in-container LOCAL=1 LOCAL_RUN_ID="$(LOCAL_RUN_ID)"
+	@$(MAKE) test-in-container DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"
 
 test-in-container:
-	@$(MAKE) check-local-environment LOCAL=1
+	@$(MAKE) check-docker-environment DOCKER=1
 	@$(COMPOSE) run --rm --user root app alembic upgrade head
 	@$(COMPOSE) run --rm --user root app pytest
 	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile && pnpm test:run'
 
 quality:
-ifeq ($(LOCAL),1)
-	@$(MAKE) check-local-environment LOCAL=1
+ifeq ($(DOCKER),1)
+	@$(MAKE) check-docker-environment DOCKER=1
 	@$(COMPOSE) run --rm --user root app sh -c 'mkdir -p reports && ruff format --check --no-cache app tests scripts && ruff check --no-cache app tests scripts && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts && bandit -q -r app scripts -lll -f json -o reports/bandit.json && pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
 else
 	@$(UV) run --frozen ruff format --check --no-cache app tests scripts
@@ -112,33 +116,33 @@ image-scan:
 	@docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$(CURDIR)/reports:/reports" aquasec/trivy:0.56.2 image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed --format json --output /reports/trivy-image.json "$(IMAGE_ID)"
 
 mutation:
-ifeq ($(LOCAL),1)
-	@$(MAKE) check-local-environment LOCAL=1
+ifeq ($(DOCKER),1)
+	@$(MAKE) check-docker-environment DOCKER=1
 	@$(COMPOSE) run --rm app alembic upgrade head
 	@$(COMPOSE) run --rm -e PYTEST_ADDOPTS=--no-cov app python scripts/check_critical_mutations.py
 else
-	@echo "Мутационная проверка разрешена только с LOCAL=1" >&2
+	@echo "Мутационная проверка разрешена только с DOCKER=1" >&2
 	@exit 2
 endif
 
 migration-check:
-ifeq ($(LOCAL),1)
-	@$(MAKE) check-local-environment LOCAL=1
+ifeq ($(DOCKER),1)
+	@$(MAKE) check-docker-environment DOCKER=1
 	@$(COMPOSE) run --rm app python scripts/migration_check.py
 else
-	@echo "Проверка миграций разрешена только с LOCAL=1" >&2
+	@echo "Проверка миграций разрешена только с DOCKER=1" >&2
 	@exit 2
 endif
 
 backup:
-ifeq ($(LOCAL),1)
-	@$(MAKE) check-local-environment LOCAL=1
+ifeq ($(DOCKER),1)
+	@$(MAKE) check-docker-environment DOCKER=1
 endif
 	@$(COMPOSE) run --rm pg-tools sh /scripts/backup_restore.sh backup /backups
 
 restore:
-ifeq ($(LOCAL),1)
-	@$(MAKE) check-local-environment LOCAL=1
+ifeq ($(DOCKER),1)
+	@$(MAKE) check-docker-environment DOCKER=1
 endif
 	@test -n "$(BACKUP)" || (echo "Укажите BACKUP=backups/<имя>.dump" >&2; exit 2)
 	@case "$(BACKUP)" in backups/*.dump) ;; *) echo "BACKUP должен указывать на дамп в backups/" >&2; exit 2 ;; esac
@@ -152,12 +156,12 @@ endif
 		pg-tools sh /scripts/backup_restore.sh restore
 
 backup-restore-check:
-ifeq ($(LOCAL),1)
-	@$(MAKE) check-local-environment LOCAL=1
+ifeq ($(DOCKER),1)
+	@$(MAKE) check-docker-environment DOCKER=1
 	@$(COMPOSE) run --rm app alembic upgrade head
 	@$(COMPOSE) run --rm pg-tools sh /scripts/backup_restore_check.sh /backups
 else
-	@echo "Проверка backup/restore разрешена только с LOCAL=1" >&2
+	@echo "Проверка backup/restore разрешена только с DOCKER=1" >&2
 	@exit 2
 endif
 
@@ -166,8 +170,8 @@ lock-check:
 	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile'
 
 container-check:
-ifeq ($(LOCAL),1)
-	@$(MAKE) check-local-environment LOCAL=1
+ifeq ($(DOCKER),1)
+	@$(MAKE) check-docker-environment DOCKER=1
 	@set -eu; \
 	cleanup() { $(COMPOSE) down --volumes --remove-orphans; }; \
 	trap cleanup EXIT HUP INT TERM; \
@@ -180,14 +184,14 @@ ifeq ($(LOCAL),1)
 	cleanup; \
 	trap - EXIT HUP INT TERM
 else
-	@echo "Контейнерная проверка разрешена только с LOCAL=1" >&2
+	@echo "Контейнерная проверка разрешена только с DOCKER=1" >&2
 	@exit 2
 endif
 
-check-local-project-clean:
-	@$(MAKE) check-local-environment LOCAL=1 LOCAL_RUN_ID="$(LOCAL_RUN_ID)"
+check-docker-project-clean:
+	@$(MAKE) check-docker-environment DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"
 	@test -z "$$($(COMPOSE) ps --all --quiet)" || (echo "Остались контейнеры тестового Compose-проекта" >&2; exit 2)
-	@test -z "$$(docker volume ls --filter label=com.docker.compose.project=$(LOCAL_PROJECT) --quiet)" || (echo "Остались тома тестового Compose-проекта" >&2; exit 2)
+	@test -z "$$(docker volume ls --filter label=com.docker.compose.project=$(DOCKER_PROJECT) --quiet)" || (echo "Остались тома тестового Compose-проекта" >&2; exit 2)
 
 check-working-tree-diff:
 	@git diff --check
@@ -197,23 +201,23 @@ check-branch-diff:
 	git diff --check "$$base...HEAD"
 
 verify:
-ifeq ($(LOCAL),1)
-	@$(MAKE) check-local-environment LOCAL=1 LOCAL_RUN_ID="$(LOCAL_RUN_ID)"
+ifeq ($(DOCKER),1)
+	@$(MAKE) check-docker-environment DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"
 	@set -eu; \
 	cleanup() { $(COMPOSE) down --volumes --remove-orphans; }; \
 	trap cleanup EXIT HUP INT TERM; \
-	echo '==> Проверка lock-файлов'; $(MAKE) lock-check LOCAL=1 LOCAL_RUN_ID="$(LOCAL_RUN_ID)"; \
-	echo '==> Проверка качества'; $(MAKE) quality LOCAL=1 LOCAL_RUN_ID="$(LOCAL_RUN_ID)"; \
-	echo '==> Автоматические тесты'; $(MAKE) test LOCAL=1 LOCAL_RUN_ID="$(LOCAL_RUN_ID)"; \
-	echo '==> Мутационная проверка'; $(MAKE) mutation LOCAL=1 LOCAL_RUN_ID="$(LOCAL_RUN_ID)"; \
-	echo '==> Проверка миграций'; $(MAKE) migration-check LOCAL=1 LOCAL_RUN_ID="$(LOCAL_RUN_ID)"; \
-	echo '==> Проверка backup/restore'; $(MAKE) backup-restore-check LOCAL=1 LOCAL_RUN_ID="$(LOCAL_RUN_ID)"; \
-	echo '==> Контейнерный smoke-сценарий'; $(MAKE) container-check LOCAL=1 LOCAL_RUN_ID="$(LOCAL_RUN_ID)"; \
-	echo '==> Проверка очистки тестового проекта'; $(MAKE) check-local-project-clean LOCAL=1 LOCAL_RUN_ID="$(LOCAL_RUN_ID)"; \
+	echo '==> Проверка lock-файлов'; $(MAKE) lock-check DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
+	echo '==> Проверка качества'; $(MAKE) quality DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
+	echo '==> Автоматические тесты'; $(MAKE) test DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
+	echo '==> Мутационная проверка'; $(MAKE) mutation DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
+	echo '==> Проверка миграций'; $(MAKE) migration-check DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
+	echo '==> Проверка backup/restore'; $(MAKE) backup-restore-check DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
+	echo '==> Контейнерный smoke-сценарий'; $(MAKE) container-check DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
+	echo '==> Проверка очистки тестового проекта'; $(MAKE) check-docker-project-clean DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
 	echo '==> Проверка whitespace рабочей копии'; $(MAKE) check-working-tree-diff; \
 	echo '==> Проверка whitespace веточной разницы'; $(MAKE) check-branch-diff; \
 	trap - EXIT HUP INT TERM
 else
-	@echo "Полный контур verify разрешён только с LOCAL=1" >&2
+	@echo "Полный контур verify разрешён только с DOCKER=1" >&2
 	@exit 2
 endif

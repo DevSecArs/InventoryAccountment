@@ -165,14 +165,14 @@ git status --short --branch
 cd /opt/inventory-accountment
 export PATH="$HOME/.local/bin:$PATH"
 
-make setup LOCAL=1 LOCAL_RUN_ID=ubuntu-verify
+make setup DOCKER=1 DOCKER_RUN_ID=ubuntu-verify
 ```
 
 **Краткое описание**
 
 Команда использует безопасный `.env.example`, установит закреплённые Python- и
 frontend-зависимости и не будет обращаться к рабочей БД. Значение
-`LOCAL_RUN_ID` нужно использовать без изменений во всех проверочных командах.
+`DOCKER_RUN_ID` нужно использовать без изменений во всех проверочных командах.
 
 ## 7. Запустить все обязательные тесты
 
@@ -187,14 +187,14 @@ cd /opt/inventory-accountment
 export PATH="$HOME/.local/bin:$PATH"
 
 make verify \
-  LOCAL=1 \
-  LOCAL_RUN_ID=ubuntu-verify \
+  DOCKER=1 \
+  DOCKER_RUN_ID=ubuntu-verify \
   BASE_REF=origin/main
 ```
 
 **Краткое описание**
 
-`make verify LOCAL=1` последовательно проверяет:
+`make verify DOCKER=1` последовательно проверяет:
 
 - lock-файлы и воспроизводимость зависимостей;
 - форматирование, Ruff, mypy и Bandit;
@@ -400,10 +400,10 @@ git fetch --tags --prune origin
 git checkout main
 git pull --ff-only origin main
 
-make setup LOCAL=1 LOCAL_RUN_ID=ubuntu-upgrade
+make setup DOCKER=1 DOCKER_RUN_ID=ubuntu-upgrade
 make verify \
-  LOCAL=1 \
-  LOCAL_RUN_ID=ubuntu-upgrade \
+  DOCKER=1 \
+  DOCKER_RUN_ID=ubuntu-upgrade \
   BASE_REF=origin/main
 
 make up
@@ -422,7 +422,7 @@ curl --fail --show-error http://127.0.0.1:8000/health/ready
 
 Развёртывание завершено, когда одновременно выполнены условия:
 
-- `make verify LOCAL=1` завершился с кодом `0`;
+- `make verify DOCKER=1` завершился с кодом `0`;
 - все обязательные отчёты созданы;
 - миграции применены без ошибок;
 - контейнеры приложения и PostgreSQL имеют состояние `healthy`;
