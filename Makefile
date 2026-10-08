@@ -168,21 +168,33 @@ else
 endif
 
 test:
+	@echo '==> Тесты: запускаю изолированный Docker-контур'
 	@$(MAKE) test-in-container DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"
 
 test-in-container:
 	@$(MAKE) check-docker-environment DOCKER=1
+	@echo '==> Backend: применяю миграции к тестовой БД'
 	@$(COMPOSE) run --rm --user root app alembic upgrade head
+	@echo '==> Backend: запускаю pytest и проверку покрытия'
 	@$(COMPOSE) run --rm --user root app pytest
+	@echo '==> Frontend: подготавливаю test-образ и кэш pnpm'
 	@$(MAKE) frontend-test-image
 	@$(MAKE) ensure-pnpm-store
+	@echo '==> Frontend: запускаю тесты из проектного образа'
 	@docker run --rm -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)"
 
 frontend-test-image:
-	@docker build --target frontend-test --tag "$(FRONTEND_TEST_IMAGE)" .
+	@echo '==> Frontend: собираю образ $(FRONTEND_TEST_IMAGE)'
+	@docker build --progress=plain --target frontend-test --tag "$(FRONTEND_TEST_IMAGE)" .
 
 ensure-pnpm-store:
-	@docker volume inspect "$(PNPM_STORE_VOLUME)" >/dev/null 2>&1 || docker volume create "$(PNPM_STORE_VOLUME)" >/dev/null
+	@set -eu; \
+	if docker volume inspect "$(PNPM_STORE_VOLUME)" >/dev/null 2>&1; then \
+		echo '==> Frontend: использую существующий pnpm-кэш $(PNPM_STORE_VOLUME)'; \
+	else \
+		echo '==> Frontend: создаю pnpm-кэш $(PNPM_STORE_VOLUME)'; \
+		docker volume create "$(PNPM_STORE_VOLUME)" >/dev/null; \
+	fi
 
 quality:
 ifeq ($(DOCKER),1)
@@ -197,8 +209,10 @@ else
 	@$(UV) run --frozen sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
 endif
 	@mkdir -p reports
+	@echo '==> Frontend: подготавливаю образ и pnpm-кэш для проверок качества'
 	@$(MAKE) frontend-test-image
 	@$(MAKE) ensure-pnpm-store
+	@echo '==> Frontend: запускаю форматирование, lint, typecheck и audit'
 	@docker run --rm -v "$(PNPM_STORE_VOLUME):/pnpm/store" -v "$(CURDIR)/reports:/reports" "$(FRONTEND_TEST_IMAGE)" sh -lc 'pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && pnpm quality && pnpm audit --audit-level=high --json > /reports/pnpm-audit.json'
 	@$(MAKE) secret-scan
 
@@ -263,9 +277,12 @@ else
 endif
 
 lock-check:
+	@echo '==> Lock-файлы: проверяю Python-зависимости'
 	@$(UV) lock --check
+	@echo '==> Lock-файлы: подготавливаю frontend-образ и pnpm-кэш'
 	@$(MAKE) frontend-test-image
 	@$(MAKE) ensure-pnpm-store
+	@echo '==> Lock-файлы: проверяю frontend-зависимости'
 	@docker run --rm -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)" pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store
 
 container-smoke:
@@ -300,11 +317,10 @@ check-branch-diff:
 	git diff --check "$$base...HEAD"
 
 verify:
-ifeq ($(DOCKER),1)
-	@$(MAKE) check-docker-environment DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"
 	@set -eu; \
-	cleanup() { $(COMPOSE) down --volumes --remove-orphans; }; \
+	cleanup() { echo '==> Очистка изолированного тестового Compose-проекта; pnpm-кэш $(PNPM_STORE_VOLUME) сохраняется'; $(MAKE) down DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; }; \
 	trap cleanup EXIT HUP INT TERM; \
+	echo '==> Подготовка изолированного Docker-контура'; $(MAKE) check-docker-environment DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
 	echo '==> Проверка lock-файлов'; $(MAKE) lock-check DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
 	echo '==> Проверка качества'; $(MAKE) quality DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
 	echo '==> Автоматические тесты'; $(MAKE) test DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
@@ -315,8 +331,7 @@ ifeq ($(DOCKER),1)
 	echo '==> Проверка очистки тестового проекта'; $(MAKE) check-docker-project-clean DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
 	echo '==> Проверка whitespace рабочей копии'; $(MAKE) check-working-tree-diff; \
 	echo '==> Проверка whitespace веточной разницы'; $(MAKE) check-branch-diff; \
+	cleanup; \
 	trap - EXIT HUP INT TERM
-else
-	@echo "Полный контур verify разрешён только с DOCKER=1" >&2
-	@exit 2
-endif
+	@echo '==> Проверки успешно завершены. Запускаю приложение: make up DOCKER=$(DOCKER)'
+	@$(MAKE) up DOCKER="$(DOCKER)"

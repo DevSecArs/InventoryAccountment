@@ -54,7 +54,7 @@ make mutation DOCKER=1         # критические контролируем
 make backup DOCKER=1           # создать проверяемый дамп в backups/
 make restore DOCKER=1 BACKUP=backups/<имя>.dump
 make status DOCKER=1           # вывести статус и логи Docker-контура
-make verify DOCKER=1           # полный блокирующий контур
+make verify [DOCKER=1]         # полный блокирующий контур и запуск приложения после успеха
 ```
 
 `make restore` по умолчанию восстанавливает в отдельную БД. Перезапись
@@ -64,11 +64,17 @@ make verify DOCKER=1           # полный блокирующий конту�
 
 ## Что проверяет verify
 
-Контур проверяет lock-файлы, форматирование, Ruff, mypy, Bandit, Python- и
+Контур всегда выполняет проверки в изолированном Docker-контуре, независимо от
+значения параметра `DOCKER`. Он проверяет lock-файлы, форматирование, Ruff, mypy, Bandit, Python- и
 frontend-аудит зависимостей, историю и рабочую копию gitleaks, backend и
 frontend-тесты с coverage не ниже 80%, контролируемые мутации, миграции,
 backup/restore, Trivy-скан того же образа, контейнерный API-сценарий, очистку
 ресурсов и whitespace текущей и веточной разницы.
+
+После успешных проверок команда выполняет `make up DOCKER=<переданное значение>`:
+без параметра запускается рабочий Compose-контур, с `DOCKER=1` — тестовый. Внешний
+том `inventory-accountment-pnpm-store` не относится к Compose-проекту и не
+удаляется при очистке тестового контура.
 
 Отчёты находятся в `reports/`: `bandit.json`, `pip-audit.json`,
 `pnpm-audit.json`, `gitleaks.json`, `trivy-image.json`, `junit.xml`,
@@ -81,7 +87,7 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 удаляет исключительно Compose-ресурсы выбранного `DOCKER_RUN_ID`; обычный
 `make down` не удаляет тома. Если проверка была прервана, выполните
 `make down DOCKER=1 DOCKER_RUN_ID=<тот же id>`, затем повторите целевой шаг и
-`make verify DOCKER=1`.
+`make verify` либо `make verify DOCKER=1`.
 
 Перед приёмкой запустите в чистой копии `make setup DOCKER=1`, затем
 `make verify DOCKER=1`. Локальный успех не заменяет публикацию ветки, CI,
@@ -354,10 +360,10 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 1. Определить общую базу текущей ветки и `BASE_REF`.
 2. Проверить веточную разницу командой `git diff --check`.
 
-### `make verify DOCKER=1`
+### `make verify [DOCKER=1]`
 
-1. Проверить `.env.example` и параметры тестового окружения.
-2. Зарегистрировать очистку ресурсов тестового Compose-проекта.
+1. Проверить `.env.example` и параметры изолированного тестового Docker-контура независимо от переданного `DOCKER`.
+2. Зарегистрировать очистку ресурсов тестового Compose-проекта с сохранением внешнего pnpm store.
 3. Выполнить `make lock-check`.
 4. Выполнить `make quality DOCKER=1`.
 5. Выполнить `make test`.
@@ -368,4 +374,5 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 10. Выполнить `make check-docker-project-clean DOCKER=1`.
 11. Выполнить `make check-working-tree-diff`.
 12. Выполнить `make check-branch-diff`.
-13. Удалить контейнеры, сети, тома и ресурсы-сироты тестового Compose-проекта.
+13. Удалить контейнеры, сети, тома и ресурсы-сироты тестового Compose-проекта, сохранив внешний том `inventory-accountment-pnpm-store`.
+14. После успешных проверок выполнить `make up` с переданным значением `DOCKER`.
