@@ -43,15 +43,24 @@ USER app
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
-FROM node:24.21.0-bookworm-slim AS frontend
+FROM node:24.21.0-bookworm-slim AS frontend-base
 
 WORKDIR /app/frontend
 RUN npm install --global pnpm@11.19.0
+
+FROM frontend-base AS frontend
+
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY frontend ./
 EXPOSE 5173
 CMD ["pnpm", "exec", "vite", "--host", "0.0.0.0", "--port", "5173"]
+
+FROM frontend-base AS frontend-test
+
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
+COPY frontend ./
+CMD ["sh", "-lc", "pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && pnpm test:run"]
 
 FROM builder AS test-builder
 

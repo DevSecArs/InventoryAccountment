@@ -126,10 +126,10 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 7. Запустить тестовую PostgreSQL в изолированном Compose-контуре.
 8. Применить Alembic-миграции к тестовой БД.
 9. Запустить backend-тесты через `pytest` в Docker-контейнере приложения.
-10. Запустить временный Docker-контейнер Node.js.
-11. Скопировать в него исходники frontend без `node_modules`.
-12. Установить pnpm.
-13. Установить frontend-зависимости по `pnpm-lock.yaml`.
+10. Собрать отдельный образ frontend-проверок `inventory-accountment-frontend-test:local`.
+11. Создать при отсутствии именованный Docker-том `inventory-accountment-pnpm-store`.
+12. Подключить том к `/pnpm/store` в контейнере frontend-проверок.
+13. Установить frontend-зависимости по `pnpm-lock.yaml`, используя кэш pnpm.
 14. Запустить frontend-тесты командой `pnpm test:run`.
 
 ### `make run DOCKER=1`
@@ -198,10 +198,10 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 1. Проверить `.env.example` и параметры тестового окружения.
 2. Применить Alembic-миграции к тестовой БД во временном контейнере приложения.
 3. Запустить backend-тесты через `pytest` во временном контейнере приложения.
-4. Запустить временный Docker-контейнер Node.js.
-5. Скопировать в него исходники frontend без `node_modules`.
-6. Установить pnpm и frontend-зависимости.
-7. Запустить frontend-тесты командой `pnpm test:run`.
+4. Собрать отдельный образ frontend-проверок.
+5. Создать при отсутствии именованный Docker-том pnpm store.
+6. Подключить том к контейнеру frontend-проверок.
+7. Установить зависимости с использованием кэша и запустить `pnpm test:run`.
 
 ### `make quality DOCKER=1`
 
@@ -213,11 +213,12 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 6. Запустить Bandit и записать отчёт в `reports/bandit.json`.
 7. Сформировать список Python-зависимостей.
 8. Запустить pip-audit и записать отчёт в `reports/pip-audit.json`.
-9. Запустить временный Docker-контейнер Node.js.
-10. Установить frontend-зависимости.
-11. Запустить frontend-проверки качества.
-12. Запустить frontend audit и записать отчёт в `reports/pnpm-audit.json`.
-13. Запустить `make secret-scan`.
+9. Собрать отдельный образ frontend-проверок.
+10. Подключить постоянный Docker-том с pnpm store.
+11. Установить frontend-зависимости с использованием кэша.
+12. Запустить frontend-проверки качества.
+13. Запустить frontend audit и записать отчёт в `reports/pnpm-audit.json`.
+14. Запустить `make secret-scan`.
 
 ### `make quality`
 
@@ -228,11 +229,12 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 5. Запустить Bandit и записать отчёт в `reports/bandit.json`.
 6. Сформировать список Python-зависимостей.
 7. Запустить pip-audit и записать отчёт в `reports/pip-audit.json`.
-8. Запустить временный Docker-контейнер Node.js.
-9. Установить frontend-зависимости.
-10. Запустить frontend-проверки качества.
-11. Запустить frontend audit и записать отчёт в `reports/pnpm-audit.json`.
-12. Запустить `make secret-scan`.
+8. Собрать отдельный образ frontend-проверок.
+9. Подключить постоянный Docker-том с pnpm store.
+10. Установить frontend-зависимости с использованием кэша.
+11. Запустить frontend-проверки качества.
+12. Запустить frontend audit и записать отчёт в `reports/pnpm-audit.json`.
+13. Запустить `make secret-scan`.
 
 ### `make secret-scan`
 
@@ -300,9 +302,9 @@ backup/restore, Trivy-скан того же образа, контейнерн�
 ### `make lock-check`
 
 1. Проверить соответствие `uv.lock` зависимостям проекта.
-2. Запустить временный Docker-контейнер Node.js.
-3. Скопировать исходники frontend без `node_modules`.
-4. Установить frontend-зависимости по `pnpm-lock.yaml`.
+2. Собрать отдельный образ frontend-проверок.
+3. Создать при отсутствии именованный Docker-том pnpm store.
+4. Установить frontend-зависимости по `pnpm-lock.yaml`, используя кэш pnpm.
 
 ### `make status [DOCKER=1]`
 

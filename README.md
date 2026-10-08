@@ -117,7 +117,10 @@ Python-зависимости из `uv.lock` и frontend-зависимости 
 `make migrate` применяет Alembic-миграции к выбранному окружению. Команды
 `make test` применяет миграции к изолированной БД, запускает backend- и
 frontend-тесты и формирует игнорируемые Git отчёты JUnit, XML и HTML coverage
-в `reports/`. `make quality` проверяет форматирование, статический анализ,
+в `reports/`. Frontend-проверки выполняются в отдельном образе
+`inventory-accountment-frontend-test:local`; архивы pnpm сохраняются в
+именованном Docker-томе `inventory-accountment-pnpm-store`, который не удаляет
+`make down DOCKER=1`. `make quality` проверяет форматирование, статический анализ,
 SAST, известные уязвимости зависимостей и frontend без изменения исходников.
 `make mutation DOCKER=1` запускает в изолированном контуре контролируемые
 мутации проверки количества, уникальности позиции, архивных ссылок, статуса

@@ -6,6 +6,8 @@ UV_VERSION := 0.5.29
 PYTHON ?= python3
 UV := $(PYTHON) -m uv
 RUNTIME_DIR := reports/runtime
+FRONTEND_TEST_IMAGE ?= inventory-accountment-frontend-test:local
+PNPM_STORE_VOLUME ?= inventory-accountment-pnpm-store
 PRODUCTION_ENV_FILE ?= /etc/InventoryAccountment/InventoryAccountment.env
 BACKUP ?=
 BASE_REF ?= main
@@ -32,7 +34,7 @@ DOCKER_PROJECT := inventory-accountment
 COMPOSE := docker compose --project-name $(DOCKER_PROJECT) --env-file $(ENV_FILE) -f docker-compose.yaml
 endif
 
-.PHONY: setup run up down stop-local status migrate test test-in-container quality mutation migration-check backup restore backup-restore-check lock-check secret-scan image-scan container-smoke verify check-docker-environment check-docker-project-clean check-working-tree-diff check-branch-diff
+.PHONY: setup run up down stop-local status migrate test test-in-container frontend-test-image ensure-pnpm-store quality mutation migration-check backup restore backup-restore-check lock-check secret-scan image-scan container-smoke verify check-docker-environment check-docker-project-clean check-working-tree-diff check-branch-diff
 
 setup:
 	@$(PYTHON) --version
@@ -172,7 +174,15 @@ test-in-container:
 	@$(MAKE) check-docker-environment DOCKER=1
 	@$(COMPOSE) run --rm --user root app alembic upgrade head
 	@$(COMPOSE) run --rm --user root app pytest
-	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile && pnpm test:run'
+	@$(MAKE) frontend-test-image
+	@$(MAKE) ensure-pnpm-store
+	@docker run --rm -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)"
+
+frontend-test-image:
+	@docker build --target frontend-test --tag "$(FRONTEND_TEST_IMAGE)" .
+
+ensure-pnpm-store:
+	@docker volume inspect "$(PNPM_STORE_VOLUME)" >/dev/null 2>&1 || docker volume create "$(PNPM_STORE_VOLUME)" >/dev/null
 
 quality:
 ifeq ($(DOCKER),1)
@@ -187,7 +197,9 @@ else
 	@$(UV) run --frozen sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
 endif
 	@mkdir -p reports
-	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" -v "$(CURDIR)/reports:/reports" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile && pnpm quality && pnpm audit --audit-level=high --json > /reports/pnpm-audit.json'
+	@$(MAKE) frontend-test-image
+	@$(MAKE) ensure-pnpm-store
+	@docker run --rm -v "$(PNPM_STORE_VOLUME):/pnpm/store" -v "$(CURDIR)/reports:/reports" "$(FRONTEND_TEST_IMAGE)" sh -lc 'pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && pnpm quality && pnpm audit --audit-level=high --json > /reports/pnpm-audit.json'
 	@$(MAKE) secret-scan
 
 secret-scan:
@@ -252,7 +264,9 @@ endif
 
 lock-check:
 	@$(UV) lock --check
-	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile'
+	@$(MAKE) frontend-test-image
+	@$(MAKE) ensure-pnpm-store
+	@docker run --rm -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)" pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store
 
 container-smoke:
 ifeq ($(DOCKER),1)
