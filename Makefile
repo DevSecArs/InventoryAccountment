@@ -3,7 +3,8 @@ SHELL := /bin/sh
 LOCAL ?= 0
 LOCAL_RUN_ID ?= $(shell printf '%s' "$(CURDIR)" | cksum | awk '{print $$1}')
 UV_VERSION := 0.5.29
-UV := python -m uv
+PYTHON ?= python3
+UV := $(PYTHON) -m uv
 BACKUP ?=
 BASE_REF ?= main
 TARGET_DATABASE ?=
@@ -27,12 +28,12 @@ endif
 .PHONY: setup run up down migrate test quality mutation migration-check backup restore backup-restore-check lock-check secret-scan image-scan container-check verify check-local-environment check-local-project-clean check-working-tree-diff check-branch-diff
 
 setup:
-	@python --version
+	@$(PYTHON) --version
 	@docker compose version
 	@node --version
 	@pnpm --version
 	@test -f $(ENV_FILE) || cp $(ENV_FILE).example $(ENV_FILE)
-	@python -m pip install --user --break-system-packages "uv==$(UV_VERSION)"
+	@$(PYTHON) -m pip install --user --break-system-packages "uv==$(UV_VERSION)"
 	@$(UV) sync --frozen --extra dev
 	@pnpm --dir frontend install --frozen-lockfile --package-import-method=copy
 

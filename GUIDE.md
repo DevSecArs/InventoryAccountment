@@ -2,8 +2,8 @@
 
 ## Требования
 
-Нужны Git, GNU Make, Docker Desktop с Docker Compose, Python 3.11, Node.js 24
-и pnpm 11.19.0. В Windows запускайте команды из WSL2 либо совместимого
+Нужны Git, GNU Make, Docker Desktop с Docker Compose, Python 3.11 (команда
+`python3`), Node.js 24 и pnpm 11.19.0. В Windows запускайте команды из WSL2 либо совместимого
 Docker-исполнителя. Не сохраняйте в Git `.env`, дампы и отчёты.
 
 ## Первый запуск
