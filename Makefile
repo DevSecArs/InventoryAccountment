@@ -25,13 +25,12 @@ ENV_FILE := .env
 COMPOSE := docker compose --project-name inventory-accountment --env-file $(ENV_FILE) -f docker-compose.yaml
 endif
 
-.PHONY: setup run up down migrate test quality mutation migration-check backup restore backup-restore-check lock-check secret-scan image-scan container-check verify check-local-environment check-local-project-clean check-working-tree-diff check-branch-diff
+.PHONY: setup run up down migrate test test-in-container quality mutation migration-check backup restore backup-restore-check lock-check secret-scan image-scan container-check verify check-local-environment check-local-project-clean check-working-tree-diff check-branch-diff
 
 setup:
 	@$(PYTHON) --version
-ifeq ($(LOCAL),1)
+	@sh scripts/ensure_docker.sh
 	@docker compose version
-endif
 	@node --version
 	@pnpm --version
 	@test -f $(ENV_FILE) || cp $(ENV_FILE).example $(ENV_FILE)
@@ -77,13 +76,12 @@ else
 endif
 
 test:
-ifeq ($(LOCAL),1)
+	@$(MAKE) test-in-container LOCAL=1 LOCAL_RUN_ID="$(LOCAL_RUN_ID)"
+
+test-in-container:
 	@$(MAKE) check-local-environment LOCAL=1
 	@$(COMPOSE) run --rm --user root app alembic upgrade head
 	@$(COMPOSE) run --rm --user root app pytest
-else
-	@$(UV) run --frozen pytest
-endif
 	@docker run --rm -v "$(CURDIR)/frontend:/src:ro" node:24.21.0-bookworm-slim sh -lc 'mkdir /work && tar --exclude=node_modules -C /src -cf - . | tar -C /work -xf - && cd /work && npm install --global pnpm@11.19.0 && pnpm install --frozen-lockfile && pnpm test:run'
 
 quality:

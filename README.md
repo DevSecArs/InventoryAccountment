@@ -94,6 +94,7 @@ main → http → entities → postgresql
 make setup LOCAL=1
 make up LOCAL=1
 make migrate LOCAL=1
+make test
 make quality LOCAL=1
 make mutation LOCAL=1
 make migration-check LOCAL=1
@@ -110,7 +111,7 @@ make down LOCAL=1
 из `frontend/pnpm-lock.yaml`. Существующие `.env` и `.env.test` не
 перезаписываются. `make up` собирает образ и ожидает healthcheck сервисов,
 `make migrate` применяет Alembic-миграции к выбранному окружению. Команды
-`make test LOCAL=1` применяет миграции к изолированной БД, запускает backend- и
+`make test` применяет миграции к изолированной БД, запускает backend- и
 frontend-тесты и формирует игнорируемые Git отчёты JUnit, XML и HTML coverage
 в `reports/`. `make quality` проверяет форматирование, статический анализ,
 SAST, известные уязвимости зависимостей и frontend без изменения исходников.

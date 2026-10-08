@@ -2,11 +2,12 @@
 
 ## Требования
 
-Для обычного локального запуска с внешней БД нужны Git, GNU Make, Python 3.11
-(команда `python3`), Node.js 24 и pnpm 11.19.0. Docker Desktop с Docker
-Compose нужен только для изолированного режима `LOCAL=1` и контейнерных
-проверок. В Windows запускайте Docker-команды из WSL2 либо совместимого
-Docker-исполнителя. Не сохраняйте в Git `.env`, дампы и отчёты.
+Нужны Git, GNU Make, Python 3.11 (команда `python3`), Node.js 24, pnpm
+11.19.0 и Docker с Compose. На Ubuntu `make setup` устанавливает отсутствующий
+Docker Engine с Compose и попросит повторно войти в SSH-сеанс после добавления
+пользователя в группу `docker`. В Windows запускайте Docker-команды из WSL2
+либо совместимого Docker-исполнителя. Не сохраняйте в Git `.env`, дампы и
+отчёты.
 
 ## Первый запуск
 
@@ -16,14 +17,17 @@ make up LOCAL=1
 make migrate LOCAL=1
 ```
 
-Для запуска приложения без Docker, когда `DATABASE_URL` в `.env` указывает на
-внешний PostgreSQL, используйте:
+Для запуска приложения с внешней PostgreSQL, когда `DATABASE_URL` в `.env`
+указывает на неё, используйте:
 
 ```bash
 make setup
 make migrate
 make run
 ```
+
+Сам API в этом сценарии запускается напрямую, но `make setup` всё равно
+готовит Docker, потому что `make test` всегда выполняется изолированно.
 
 `LOCAL=1` использует только `.env.test`, базу с суффиксом `_test` и отдельный
 Compose-проект. Для двух запусков в одной рабочей копии укажите свой
@@ -40,7 +44,7 @@ make run LOCAL=1              # запустить контур в foreground
 make up LOCAL=1               # собрать и дождаться healthcheck
 make down LOCAL=1             # удалить только тома текущего LOCAL-проекта
 make migrate LOCAL=1          # применить миграции к тестовой БД
-make test LOCAL=1             # backend/frontend тесты и coverage
+make test                     # всегда изолированные backend/frontend тесты и coverage
 make quality LOCAL=1          # формат, lint, typing, SAST, dependency и secret scan
 make mutation LOCAL=1         # критические контролируемые мутации
 make backup LOCAL=1           # создать проверяемый дамп в backups/

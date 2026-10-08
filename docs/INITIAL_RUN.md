@@ -11,10 +11,11 @@
 - Node.js 24 с npm и pnpm `11.19.0`;
 - PowerShell, открытый в корне репозитория.
 
-Docker Desktop с поддержкой Docker Compose нужен только для тестового
-контейнерного контура (`LOCAL=1`). Обычный `make setup`, `make migrate` и
-`make run` работают без Docker, если `DATABASE_URL` в `.env` указывает на
-доступный внешний PostgreSQL.
+Для `make setup` и проверок нужен Docker Desktop с поддержкой Docker Compose.
+На Ubuntu `make setup` устанавливает отсутствующий Docker Engine с Compose и
+просит повторно войти в SSH-сеанс после добавления пользователя в группу
+`docker`. Обычные `make migrate` и `make run` работают с внешней PostgreSQL из
+`DATABASE_URL` без запуска контейнера приложения.
 
 Проверить Docker можно командой:
 
