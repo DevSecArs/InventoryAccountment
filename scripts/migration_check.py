@@ -22,6 +22,7 @@ REQUIRED_TABLES = {
     "materials",
     "receipts",
     "receipt_items",
+    "receipt_status_history",
     "suppliers",
     "units",
     "user_sessions",
@@ -37,10 +38,12 @@ REQUIRED_UNIQUE_INDEXES = {
 REQUIRED_INDEXES = {
     "receipt_items": {"ix_receipt_items_material_id"},
     "receipts": {"ix_receipts_status_received_at", "ix_receipts_supplier_received_at"},
+    "receipt_status_history": {"ix_receipt_status_history_receipt_changed_id"},
 }
 REQUIRED_UNIQUE_CONSTRAINTS = {
     "receipt_items": {"receipt_id", "material_id"},
     "receipts": {"supplier_id", "document_number"},
+    "receipt_status_history": {"receipt_id"},
 }
 REQUIRED_CHECK_CONSTRAINTS = {
     "receipt_items": ("receipt_items_quantity_check", ("quantity > 0",)),
@@ -53,6 +56,7 @@ REQUIRED_FOREIGN_KEYS = {
     "materials": ("unit_id", "units", "id", None),
     "receipt_items": ("receipt_id", "receipts", "id", "CASCADE"),
     "receipts": ("supplier_id", "suppliers", "id", None),
+    "receipt_status_history": ("receipt_id", "receipts", "id", None),
     "user_sessions": ("user_id", "users", "id", "CASCADE"),
 }
 
