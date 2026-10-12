@@ -22,6 +22,9 @@ pip-wheel-metadata/
 .coverage.*
 htmlcov/
 reports/
+# Исходники раздела отчётов не являются артефактами тестов.
+!frontend/src/features/reports/
+!frontend/src/features/reports/**
 .pnpm-store/
 .tox/
 .nox/
