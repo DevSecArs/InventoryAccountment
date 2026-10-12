@@ -160,6 +160,11 @@ def update_material(
         unit = get_unit(db, update_dict["unit_id"])
         if not unit:
             raise ValueError(f"Единица измерения с ID {update_dict['unit_id']} не найдена")
+        if update_dict["unit_id"] != db_material.unit_id:
+            from app.entities.receipt import ReceiptItem
+
+            if db.query(ReceiptItem.id).filter(ReceiptItem.material_id == material_id).first():
+                raise ValueError("Нельзя изменить единицу использованного материала")
 
     if "sku" in update_dict:
         existing = (
@@ -204,6 +209,10 @@ def purge_archived_material(db: Session, material_id: str) -> bool:
     )
     if not material:
         return False
+    from app.entities.receipt import ReceiptItem
+
+    if db.query(ReceiptItem.id).filter(ReceiptItem.material_id == material_id).first():
+        raise ValueError("Нельзя удалить материал, используемый в поступлениях")
     db.delete(material)
     db.flush()
     return True

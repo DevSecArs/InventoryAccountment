@@ -189,6 +189,10 @@ def purge_archived_supplier(db: Session, supplier_id: str) -> bool:
     )
     if not supplier:
         return False
+    from app.entities.receipt import Receipt
+
+    if db.query(Receipt.id).filter(Receipt.supplier_id == supplier_id).first():
+        raise ValueError("Нельзя удалить поставщика, используемого в поступлениях")
     db.delete(supplier)
     db.flush()
     return True
