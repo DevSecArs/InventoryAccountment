@@ -1,15 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-  ArchiveRestore,
   Database,
   HeartPulse,
-  MessageSquareMore,
   ShieldCheck,
 } from 'lucide-react';
 
 import { getLiveness, getReadiness } from '../../api/health';
 import { ApiErrorNotice } from '../../components/ApiErrorNotice';
-import { FeatureUnavailable } from '../../components/FeatureUnavailable';
 
 export function AdminPage() {
   const live = useQuery({
@@ -71,27 +68,7 @@ export function AdminPage() {
           }
           healthy={ready.isSuccess}
         />
-        <ServiceCard
-          icon={MessageSquareMore}
-          name="Очередь"
-          state="Нет API"
-          healthy={false}
-          unavailable
-        />
-        <ServiceCard
-          icon={ArchiveRestore}
-          name="Резервные копии"
-          state="Нет API"
-          healthy={false}
-          unavailable
-        />
       </section>
-
-      <FeatureUnavailable>
-        Метрики RabbitMQ, DLQ, outbox и backup пока не опубликованы через
-        защищённый административный API. Секреты и строки подключения в браузере
-        не отображаются.
-      </FeatureUnavailable>
 
       <section className="panel admin-policy">
         <ShieldCheck size={24} />

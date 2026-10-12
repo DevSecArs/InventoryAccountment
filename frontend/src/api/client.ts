@@ -97,3 +97,31 @@ export async function apiRequest<T>(
 
   return (await response.json()) as T;
 }
+
+export async function apiBlobRequest(path: string, init: RequestInit = {}) {
+  const requestId = createRequestId();
+  const headers = new Headers(init.headers);
+  headers.set('X-Request-ID', requestId);
+  if (
+    csrfToken &&
+    !['GET', 'HEAD', 'OPTIONS'].includes((init.method ?? 'GET').toUpperCase())
+  ) {
+    headers.set('X-CSRF-Token', csrfToken);
+  }
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers,
+    credentials: 'include',
+    signal: init.signal,
+  });
+  if (!response.ok) {
+    let body: ApiErrorBody = {};
+    try {
+      body = (await response.json()) as ApiErrorBody;
+    } catch {
+      body = { message: 'Сервер вернул ответ в неизвестном формате' };
+    }
+    throw new ApiError(response.status, body, response.headers.get('X-Request-ID') ?? requestId);
+  }
+  return response.blob();
+}

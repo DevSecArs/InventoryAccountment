@@ -1,11 +1,4 @@
-import {
-  ArrowRight,
-  Boxes,
-  ClipboardCheck,
-  CircleAlert,
-  Database,
-  Truck,
-} from 'lucide-react';
+import { ArrowRight, Boxes, ClipboardCheck, Database, Truck } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
@@ -18,18 +11,7 @@ const overviewItems = [
     detail: 'Единицы, материалы, поставщики',
     icon: Boxes,
   },
-  {
-    label: 'Активные поступления',
-    value: '—',
-    detail: 'API ожидает реализации',
-    icon: Truck,
-  },
-  {
-    label: 'Документы с ошибкой',
-    value: '—',
-    detail: 'API ожидает реализации',
-    icon: CircleAlert,
-  },
+  { label: 'Поступления', value: '→', detail: 'Черновики и проведение', icon: Truck },
 ];
 
 export function DashboardPage() {
@@ -49,12 +31,11 @@ export function DashboardPage() {
           <p className="eyebrow">Рабочее пространство</p>
           <h1>Обзор склада</h1>
           <p className="page-description">
-            Справочники доступны для работы. Поступления и отчёты будут
-            подключены после появления серверного API.
+            Управляйте справочниками, поступлениями и отчётом по поставкам.
           </p>
         </div>
-        <Link className="button button--primary" to="/units">
-          Открыть справочники
+        <Link className="button button--primary" to="/receipts">
+          Открыть поступления
           <ArrowRight size={18} aria-hidden="true" />
         </Link>
       </section>
