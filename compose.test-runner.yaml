@@ -1,0 +1,28 @@
+services:
+  db:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_USER: inventory_test_app
+      POSTGRES_PASSWORD: inventory_test_password
+      POSTGRES_DB: inventory_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventory_test_app -d inventory_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - test_data:/var/lib/postgresql/data
+  tests:
+    image: inventory-accountment-tests:local
+    environment:
+      APP_ENV: test
+      APP_DEBUG: "false"
+      DATABASE_URL: postgresql+psycopg2://inventory_test_app:inventory_test_password@db:5432/inventory_test
+      TEST_DATABASE_URL: postgresql+psycopg2://inventory_test_app:inventory_test_password@db:5432/inventory_test
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./reports/unix-tests:/app/reports
+volumes:
+  test_data:
