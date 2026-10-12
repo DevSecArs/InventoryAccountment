@@ -1,21 +1,50 @@
-# Матрица автоматических тестов
+# Матрица автоматических проверок
 
-| Требование ТЗ | Сценарий | Уровень | Команда |
-| --- | --- | --- | --- |
-| Health, readiness, `X-Request-ID`, единый формат ошибок | Жизнеспособность, 401, 404, 409, 422, 503 и поля ошибки | API/integration: `test_health_and_error_format`, `test_readiness_reports_database_unavailable`, `test_receipt_pagination_errors_and_database_conflict` | `make test` |
-| Аутентификация и CSRF | Регистрация администратора, отсутствие и истечение сессии, запрет записи без CSRF, права администратора | API/integration: `test_authentication_and_csrf_are_required`, `test_expired_session_and_missing_csrf_have_uniform_errors`, `test_non_admin_cannot_purge_archived_catalog` | `make test` |
-| Справочники | Нормализация кодов, СИ, уникальность, поиск, границы пагинации, архивирование и ссылки | unit + API/integration: `test_catalog_crud_pagination_search_and_archiving`, `test_catalog_pagination_and_search_parameter_boundaries` | `make test` |
-| Клиент HTTP frontend | Cookie, CSRF, request ID и преобразование ошибки | unit/frontend | `make test` |
-| Цепочка миграций | Создание чистой схемы, обновление заполненной БД, ограничения и round-trip | integration | `make migration-check DOCKER=1` |
-| Backup и restore | Повреждение известных тестовых данных, восстановление связей, количества строк и Alembic revision | integration | `make backup-restore-check DOCKER=1` |
-| Контейнерный сценарий | Readiness, регистрация, запись и чтение через API и PostgreSQL | smoke/integration | `make container-smoke DOCKER=1` |
-| Безопасность поставки | SAST, audit Python/frontend lock-файлов, подтверждённые секреты в истории и рабочей копии, High/Critical в образе | security | `make quality DOCKER=1`, `make container-smoke DOCKER=1` |
-| Номер черновика поступления | Пустая строка, пробелы, границы 64/65, нормализация, уникальность у поставщика и допустимость у другого | unit + API/integration: `test_receipt_document_number_is_normalized_and_has_boundary`, `test_receipt_rejects_invalid_document_number`, `test_receipt_document_number_boundaries_and_supplier_uniqueness` | `make test` |
-| Позиции черновика поступления | Непустой состав, уникальность материала, `0`, отрицательное, минимальное положительное, избыточная точность и переполнение `NUMERIC(18,3)` | unit + API/integration: `test_receipt_rejects_invalid_items`, `test_receipt_rejects_quantity_boundaries`, `test_receipt_rejects_duplicate_and_unknown_items`, `test_receipt_quantity_respects_positive_numeric_18_3` | `make test` |
-| Ссылки и изменение черновика | Неизвестные и архивные поставщик, материал и единица; запрет редактирования нечерновика; транзакционный откат | API/integration: `test_receipt_rejects_archived_links`, `test_receipt_update_rolls_back_conflicts_and_rejects_non_draft` | `make test` |
-| Целостность поступления | Ограничение PostgreSQL для пустого номера, конфликт unique и ответ API 409 | API/integration: `test_receipt_database_rejects_blank_document_number`, `test_receipt_pagination_errors_and_database_conflict` | `make test`, `make migration-check DOCKER=1` |
-| Мутационная защита критических правил | Ослабление проверки количества, уникальности позиции, архивных ссылок, статуса черновика, CSRF, роли и readiness приводит к ожидаемому отказу целевого теста без тайм-аута | mutation: `scripts/check_critical_mutations.py`; unit + API/integration | `make mutation DOCKER=1` |
+Инвентаризация по исходникам 9701e9d. Наличие теста не означает, что он
+выполнен на текущем коммите. Записанные результаты — в
+[TEST_DEFECTS.md](../TEST_DEFECTS.md), полная целевая матрица — в [TASK.md](../TASK.md).
 
-Проведение поступлений, outbox и отчёты пока не входят в реализованный контракт
-приложения. Их автоматические сценарии будут добавлены вместе с
-соответствующими функциями в следующих задачах.
+| Область | Реализованные проверки | Файлы |
+| --- | --- | --- |
+| Валидация | Номер документа, позиции, количество и точность, нормализация | tests/unit/test_validation.py |
+| Пароли | Проверка пароля | tests/unit/test_password_verification.py |
+| Период и CSV | Границы периода, escaping, опасные начальные символы, пустой CSV | tests/unit/test_supply_report.py |
+| Test-образ | Исключение локальных зависимостей и .env, сохранение исходников отчётов | tests/unit/test_build_context.py |
+| API, auth, справочники | Health/readiness, ошибки, CSRF, сессии, purge, CRUD, архивы, поиск и пагинация | tests/integration/test_api_catalogs.py |
+| Черновики | Создание/чтение/PATCH, ограничения, ссылки, rollback и запрет изменения нечерновика | tests/integration/test_receipts.py |
+| Проведение и история | Повтор без изменения updated_at и второй истории, legacy-статус, удаление черновика, два конкурентных проведения | tests/integration/test_receipt_posting.py |
+| Отчёты | Период [from,to), исключение draft, фильтр материала, точные количества, JSON/CSV, ошибки периода | tests/integration/test_supply_reports.py |
+| Frontend | 4 проверки API-клиента, 1 CatalogLayout, 2 ReportsPage: отсутствие периода и серверные строки/итоги | frontend/src/**/*.test.ts, frontend/src/**/*.test.tsx |
+| Миграции | Чистая БД, обновление заполненной предыдущей схемы, ограничения, история с UNIQUE/индексом/FK, downgrade/upgrade, metadata | scripts/migration_check.py |
+| Backup/restore | Восстановление изолированных данных, связей и ревизии | scripts/backup_restore_check.sh |
+| Smoke | Health, регистрация, создание/чтение единицы через API | scripts/container_smoke.py |
+| Mutation | Отказ целевых тестов при ослаблении критических проверок | scripts/check_critical_mutations.py |
+
+## Запуск
+
+- make test DOCKER=1 — Backend и Frontend через основной тестовый Compose.
+- make migration-check DOCKER=1 — миграции.
+- make backup-restore-check DOCKER=1 — реальное восстановление в тестовом контуре.
+- make mutation DOCKER=1 — мутационные проверки.
+- make quality DOCKER=1 — статические и security-проверки.
+- make container-smoke DOCKER=1 — контейнерный сценарий и Trivy.
+- make verify DOCKER=1 — обязательный полный контур.
+- [Отдельный Linux-образ](UNIX_TESTS.md) — Backend, Frontend, сборка и миграции.
+
+Команды требуют подготовленного окружения и отдельных тестовых ресурсов.
+container-smoke пока использует фиксированный тег для сканирования:
+совпадение image ID остаётся незавершённым требованием.
+
+## Неполнота покрытия
+
+Существующие проверки не закрывают всю матрицу TASK.md. В частности:
+отказ commit и rollback истории, гонки проведения с PATCH/архивированием,
+согласованность нескольких SQL-запросов отчёта, сумма 0.1+0.2 одного
+материала, разные единицы, выгрузка больше страницы, все роли и ошибки новых
+экранов, обновление кешей после проведения. В миграционном upgrade-сценарии
+данные справочников до обновления не заменяют проверку всех старых документов.
+
+Frontend coverage и браузерные E2E не настроены. Успешная сборка не
+подтверждает поведение интерфейса. Smoke не проводит поступление и не
+проверяет отчёт. Очередь, outbox и worker исключены из согласованного MVP;
+синхронное проведение и отчёты уже реализованы и тестируются.

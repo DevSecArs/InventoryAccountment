@@ -1,433 +1,95 @@
-# Развёртывание InventoryAccountment на Ubuntu Server
+# Развёртывание на Ubuntu: текущие варианты
 
-Инструкция предназначена для Ubuntu Server 24.04 LTS. Она сначала запускает
-все обязательные проверки в изолированном Docker-контуре и только после их
-успешного завершения запускает рабочие контейнеры приложения и PostgreSQL.
-Текущий Compose-контур публикует FastAPI и Vite frontend на всех интерфейсах;
-PostgreSQL остаётся доступной только на loopback-интерфейсе.
+Документ сверяется с кодом, но не подтверждает проведённое развёртывание на сервере. Различайте учебный запуск, проверку и production-доставку: в репозитории есть Compose и deploy-скрипт, но нет CD по digest и Nginx/TLS-конфигурации.
 
-Для проверки понадобится сервер минимум с 2 ядрами CPU, 4 ГБ оперативной
-памяти и 20 ГБ свободного места. Нужны пользователь с `sudo`, SSH-доступ и
-доступ в интернет к GitHub, Docker Hub, PyPI и npm.
+## 1. Подготовка
 
-## 1. Обновить Ubuntu
+Нужны Ubuntu с доступом к Git/Docker Hub/PyPI/npm, Git, Python 3.11+, GNU Make, Node.js 24 и pnpm 11.19.0. Docker Engine/Compose должны быть доступны пользователю. Make setup вызывает scripts/ensure_docker.sh, который при отсутствии Docker может установить его на Ubuntu; после добавления в docker-группу нужен новый сеанс.
 
-**Действие**
+Проверьте инструменты:
 
-Обновите список пакетов и установите базовые утилиты.
-
-**Готовый код**
-
-```bash
-sudo apt update
-sudo apt upgrade -y
-sudo apt install -y \
-  ca-certificates \
-  curl \
-  git \
-  make \
-  openssl \
-  python3 \
-  python3-pip \
-  python-is-python3
-```
-
-**Краткое описание**
-
-Git получает исходный код, Make запускает команды проекта, Python нужен для
-настройки окружения, а OpenSSL — для создания пароля PostgreSQL.
-
-## 2. Установить Docker и Docker Compose
-
-**Действие**
-
-Подключите официальный репозиторий Docker и установите Docker Engine с Compose.
-
-**Готовый код**
-
-```bash
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-  -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/ubuntu
-Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
-Components: stable
-Architectures: $(dpkg --print-architecture)
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
-
-sudo apt update
-sudo apt install -y \
-  docker-ce \
-  docker-ce-cli \
-  containerd.io \
-  docker-buildx-plugin \
-  docker-compose-plugin
-
-sudo systemctl enable --now docker
-sudo usermod -aG docker "$USER"
-```
-
-**Краткое описание**
-
-После добавления пользователя в группу `docker` завершите SSH-сессию и
-подключитесь к серверу снова. Это позволит запускать проект без `sudo`.
-
-## 3. Установить Node.js и pnpm
-
-**Действие**
-
-Установите Node.js 24 и закреплённую проектом версию pnpm.
-
-**Готовый код**
-
-```bash
-curl -fsSL https://deb.nodesource.com/setup_24.x -o /tmp/nodesource_setup.sh
-sudo -E bash /tmp/nodesource_setup.sh
-rm /tmp/nodesource_setup.sh
-
-sudo apt install -y nodejs
-sudo npm install --global pnpm@11.19.0
-```
-
-**Краткое описание**
-
-Node.js и pnpm нужны для установки, проверки и тестирования frontend. Версия
-pnpm совпадает с `frontend/package.json`.
-
-## 4. Проверить установленные инструменты
-
-**Действие**
-
-Убедитесь, что все команды доступны после повторного SSH-подключения.
-
-**Готовый код**
-
-```bash
+~~~bash
 git --version
+python3 --version
 make --version
-python --version
 node --version
 pnpm --version
-docker --version
+docker version
 docker compose version
-docker run --rm hello-world
-```
 
-**Краткое описание**
+~~~
 
-Все команды должны завершиться без ошибок. Если Docker сообщает об отсутствии
-прав, повторно войдите на сервер и ещё раз выполните `docker run`.
+Получите чистую копию нужной ветки/ревизии, проверьте git status. Для выпуска нужен одобренный SHA, а не просто последнее состояние main/dev. Установку ОС и внешних репозиториев выполняет администратор; эта инструкция не считает её уже выполненной.
 
-## 5. Получить исходный код
+## 2. Изолированная проверка
 
-**Действие**
+~~~bash
+make setup DOCKER=1
+make verify DOCKER=1 DOCKER_RUN_ID=ubuntu-verify BASE_REF=origin/main
 
-Клонируйте репозиторий в `/opt` и перейдите на проверяемую ревизию. Для
-реального выпуска замените `main` на заранее одобренный тег или commit SHA.
+~~~
 
-**Готовый код**
+BASE_REF должен существовать; при другой базовой ветке укажите её. Verify включает качество, тесты, миграции, backup/restore и контейнерную проверку; при отказе не продолжать выпуск и не ослаблять проверки.
 
-```bash
-sudo mkdir -p /opt/inventory-accountment
-sudo chown "$USER":"$USER" /opt/inventory-accountment
+Известное ограничение: container-smoke сканирует фиксированный тег inventory-accountment-local-ubuntu-verify-app:latest. Для других DOCKER_RUN_ID это может оказаться отсутствующим или чужим образом. Даже совпадение имени не заменяет проверку одного image ID. Полный verify на актуальном коммите здесь не подтверждён.
 
-git clone https://github.com/DevSecArs/InventoryAccountment.git \
-  /opt/inventory-accountment
-cd /opt/inventory-accountment
+После успешного verify тестовый Compose снова запущен через make up DOCKER=1. Посмотрите логи и затем удалите только этот проект:
 
-git fetch --tags --prune origin
-git checkout main
-git pull --ff-only origin main
-git status --short --branch
-```
+~~~bash
+make status DOCKER=1 DOCKER_RUN_ID=ubuntu-verify
+make down DOCKER=1 DOCKER_RUN_ID=ubuntu-verify
 
-**Краткое описание**
+~~~
 
-Перед продолжением рабочее дерево должно быть чистым. Для выпуска лучше
-использовать точный проверенный commit SHA, чтобы код на сервере нельзя было
-незаметно заменить другим состоянием ветки.
+Если нужен только набор тестов без Make/Node на хосте, используйте [Linux test-образ](UNIX_TESTS.md). Его успех не заменяет verify.
 
-## 6. Подготовить изолированное проверочное окружение
+## 3. Учебный стенд
 
-**Действие**
+~~~bash
+make up DOCKER=1 DOCKER_RUN_ID=ubuntu-demo
+make migrate DOCKER=1 DOCKER_RUN_ID=ubuntu-demo
 
-Добавьте каталог пользовательских программ в `PATH` и выполните первоначальную
-настройку локального проверочного контура.
+~~~
 
-**Готовый код**
+UI — http://<SERVER_IP>:5174, API — :8001, данные тестовые и удаляются make down DOCKER=1. В .env.example APP_ENV=test, поэтому cookie не Secure. Такой режим предназначен для закрытого учебного окружения, не для production.
 
-```bash
-cd /opt/inventory-accountment
-export PATH="$HOME/.local/bin:$PATH"
+## 4. Запуск с рабочей БД из исходников
 
-make setup DOCKER=1 DOCKER_RUN_ID=ubuntu-verify
-```
+Для длительно работающего экземпляра используйте [deploy-скрипт](DEPLOY_SCRIPT.md) и [systemd](SYSTEMD_SERVICE.md). Он создаёт пользователя, venv, units и системный env-файл; PostgreSQL уже должна существовать. Перед применением миграций нужна проверенная копия именно рабочей БД.
 
-**Краткое описание**
+При ручной подготовке настройки лежат в /etc/InventoryAccountment/InventoryAccountment.env:
 
-Команда использует безопасный `.env.example`, установит закреплённые Python- и
-frontend-зависимости и не будет обращаться к рабочей БД. Значение
-`DOCKER_RUN_ID` нужно использовать без изменений во всех проверочных командах.
-
-## 7. Запустить все обязательные тесты
-
-**Действие**
-
-Запустите единый проверочный контур и дождитесь его полного завершения.
-
-**Готовый код**
-
-```bash
-cd /opt/inventory-accountment
-export PATH="$HOME/.local/bin:$PATH"
-
-make verify \
-  DOCKER=1 \
-  DOCKER_RUN_ID=ubuntu-verify \
-  BASE_REF=origin/main
-```
-
-**Краткое описание**
-
-`make verify DOCKER=1` последовательно проверяет:
-
-- lock-файлы и воспроизводимость зависимостей;
-- форматирование, Ruff, mypy и Bandit;
-- Python- и frontend-зависимости;
-- отсутствие секретов через gitleaks;
-- backend- и frontend-тесты;
-- покрытие backend не ниже 80%;
-- критические мутации бизнес-правил;
-- миграции на чистой и заполненной PostgreSQL;
-- backup, повреждение тестовых данных и restore;
-- сборку и Trivy-скан контейнерного образа;
-- readiness и HTTP-сценарий API → PostgreSQL;
-- очистку временных контейнеров и томов;
-- whitespace рабочей копии и разницы с основной веткой.
-
-Развёртывание можно продолжать только при коде завершения `0`. После ошибки
-исправьте её причину и повторите всю команду. Не отключайте проверки и не
-снижайте пороги.
-
-## 8. Проверить отчёты тестов
-
-**Действие**
-
-Убедитесь, что обязательные отчёты созданы.
-
-**Готовый код**
-
-```bash
-cd /opt/inventory-accountment
-
-test -f reports/junit.xml
-test -f reports/coverage.xml
-test -f reports/bandit.json
-test -f reports/pip-audit.json
-test -f reports/pnpm-audit.json
-test -f reports/gitleaks.json
-test -f reports/trivy-image.json
-
-echo "Все обязательные отчёты найдены"
-```
-
-**Краткое описание**
-
-Отчёты подтверждают выполнение тестов, покрытия и проверок безопасности.
-Каталог `reports/` не следует добавлять в Git.
-
-## 9. Создать рабочую конфигурацию
-
-**Действие**
-
-Создайте системный файл конфигурации с параметрами внешней PostgreSQL и
-закройте доступ к нему другим пользователям сервера.
-
-**Готовый код**
-
-```bash
-cd /opt/inventory-accountment
-sudo install -d -m 750 /etc/InventoryAccountment
-sudoedit /etc/InventoryAccountment/InventoryAccountment.env
-sudo chown root:inv_acc /etc/InventoryAccountment/InventoryAccountment.env
-sudo chmod 640 /etc/InventoryAccountment/InventoryAccountment.env
-```
-
-Укажите в открытом редакторе:
-
-```ini
+~~~ini
 DATABASE_URL=postgresql+psycopg2://<USER>:<PASSWORD>@<DB_HOST>:5432/inventory
 APP_ENV=production
 APP_DEBUG=false
-APP_HOST=0.0.0.0
 APP_PORT=8000
-```
 
-**Краткое описание**
+~~~
 
-Рабочая конфигурация отделена от `.env.example`, который используется только
-тестами. Файл `/etc/InventoryAccountment/InventoryAccountment.env` содержит
-секреты и не входит в Git.
+Создайте файл редактором, назначьте права root/группе службы; не коммитьте его. Не копируйте тестовый .env.example. Без systemd команды make migrate и make run используют исходники; make run запускает Uvicorn и Vite в фоне. Для настройки портов Make использует окружение shell, а не автоматически все значения системного env-файла.
 
-## 10. Применить миграции и запустить приложение
+APP_ENV=production включает Secure-cookie. Для браузерного входа по удалённому адресу нужен HTTPS, который репозиторий не настраивает. Vite preview — учебный сервер, не готовая production-раздача.
 
-**Действие**
+## 5. Обычный Compose
 
-Примените миграции к внешней PostgreSQL и запустите приложение.
+Make up без DOCKER=1 использует docker-compose.yaml и системный env-файл. Он поднимает db, runtime API и Vite dev-сервер. Помимо DATABASE_URL нужны APP_ENV/APP_DEBUG/APP_PORT и настройки POSTGRES_*; Frontend-порт по умолчанию 5173.
 
-**Готовый код**
+DATABASE_URL внутри app должна указывать на доступную контейнеру БД. Если это сервис db, хост — db и порт 5432, а не опубликованный на хосте 5433. PostgreSQL публикуется только на 127.0.0.1; API и UI — на 0.0.0.0. Применить миграции именно к этому окружению можно через:
 
-```bash
-cd /opt/inventory-accountment
-export PATH="$HOME/.local/bin:$PATH"
+~~~bash
+docker compose --project-name inventory-accountment --env-file /etc/InventoryAccountment/InventoryAccountment.env -f docker-compose.yaml run --rm app alembic upgrade head
 
-make migrate
-make run
-```
+~~~
 
-**Краткое описание**
+Обычный make migrate запускает Alembic на хосте; контейнерный hostname db с хоста может не разрешаться. Не смешивайте два способа запуска.
 
-`make migrate` применяет все миграции Alembic к рабочей БД, а `make run`
-запускает FastAPI и Vite frontend в фоне с конфигурацией из системного файла.
-Схему нельзя создавать вручную; состояние процессов доступно через `make status`.
+## 6. Проверка, backup и откат
 
-## 11. Проверить запущенное приложение
+Health/live и health/ready должны отвечать status=ok; затем проверьте авторизацию и реальный сценарий поступления/истории/отчёта. Ready не проверяет миграции. Наличие отчётных файлов не равно успешной проверке: нужны содержимое, exit code, SHA и идентификатор образа.
 
-**Действие**
+Make backup обращается к сервису db выбранного Compose. Если DATABASE_URL приложения указывает на внешнюю PostgreSQL, этот backup не покрывает её автоматически. Для внешней БД нужен отдельный проверенный механизм PostgreSQL backup/restore. Восстановление сначала выполняется в изолированной БД.
 
-Проверьте оба health-маршрута.
+Перед обновлением: резервная копия → проверенный SHA → проверки → проверка совместимости схемы → миграции → перезапуск выбранного режима → health и сквозной сценарий. Не подменять make run на make up при обычном перезапуске: это разные окружения.
 
-**Готовый код**
-
-```bash
-curl --fail --show-error http://127.0.0.1:8000/health/live
-curl --fail --show-error http://127.0.0.1:8000/health/ready
-```
-
-**Краткое описание**
-
-Оба запроса должны вернуть JSON со статусом `ok`. Проверка `ready` подтверждает
-доступность PostgreSQL.
-
-## 12. Подключиться к API с рабочего компьютера
-
-**Действие**
-
-Создайте SSH-туннель с рабочего компьютера. Замените значения пользователя и
-адреса сервера на свои.
-
-**Готовый код**
-
-```bash
-ssh -L 8000:127.0.0.1:8000 ubuntu@SERVER_IP
-```
-
-В другом терминале рабочего компьютера:
-
-```bash
-curl http://127.0.0.1:8000/health/ready
-```
-
-**Краткое описание**
-
-Туннель предоставляет доступ к API без публикации порта в интернет. После его
-создания документация FastAPI доступна на `http://127.0.0.1:8000/docs`.
-
-## 13. Создать первую резервную копию
-
-**Действие**
-
-После успешного запуска создайте проверяемый дамп БД.
-
-**Готовый код**
-
-```bash
-cd /opt/inventory-accountment
-make backup
-ls -lh backups/
-```
-
-**Краткое описание**
-
-Команда создаёт дамп и метаданные с контрольной суммой и Alembic revision.
-Скопируйте резервную копию в защищённое хранилище вне этого сервера. Не
-добавляйте содержимое `backups/` в Git.
-
-## 14. Остановить или повторно запустить проект
-
-**Действие**
-
-Используйте Make-команды для штатной остановки и повторного запуска.
-
-**Готовый код**
-
-```bash
-cd /opt/inventory-accountment
-
-make down
-make up
-make migrate
-```
-
-**Краткое описание**
-
-Обычный `make down` не удаляет рабочий том PostgreSQL. Не используйте
-`docker compose down --volumes` для рабочего окружения. После перезагрузки
-сервера снова выполните `make up` и `make migrate`, если автозапуск отдельно не
-настроен.
-
-## 15. Обновить уже развёрнутый проект
-
-**Действие**
-
-Перед обновлением создайте backup, получите новый код, снова выполните весь
-локальный контур и только затем обновите рабочие контейнеры.
-
-**Готовый код**
-
-```bash
-cd /opt/inventory-accountment
-export PATH="$HOME/.local/bin:$PATH"
-
-make backup
-git status --short
-git fetch --tags --prune origin
-git checkout main
-git pull --ff-only origin main
-
-make setup DOCKER=1 DOCKER_RUN_ID=ubuntu-upgrade
-make verify \
-  DOCKER=1 \
-  DOCKER_RUN_ID=ubuntu-upgrade \
-  BASE_REF=origin/main
-
-make up
-make migrate
-
-curl --fail --show-error http://127.0.0.1:8000/health/ready
-```
-
-**Краткое описание**
-
-Обновление запрещено продолжать при локальных Git-изменениях или неуспешном
-`make verify`. Автоматический откат схемы не выполняется: перед обновлением
-нужно определить совместимость предыдущего образа с новой схемой.
-
-## Результат
-
-Развёртывание завершено, когда одновременно выполнены условия:
-
-- `make verify DOCKER=1` завершился с кодом `0`;
-- все обязательные отчёты созданы;
-- миграции применены без ошибок;
-- контейнеры приложения и PostgreSQL имеют состояние `healthy`;
-- `/health/live` и `/health/ready` возвращают `ok`;
-- первая резервная копия создана и вынесена за пределы сервера.
-
-Локальный успешный запуск не заменяет успешный CI актуального commit SHA,
-независимое одобрение, проверку критических файлов и живую приёмку.
+Откат приложения возможен только с совместимой схемой. Downgrade a5b7c9d1e004 удаляет историю статусов, поэтому не выполнять его на рабочей БД без отдельного разрешения/плана. Независимое одобрение, CI, проверка образа, CD и живая приёмка остаются обязательными; ни одна инструкция не подтверждает их автоматически.

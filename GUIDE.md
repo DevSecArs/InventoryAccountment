@@ -1,377 +1,98 @@
-# Руководство по локальной проверке
+# Команды разработки и проверок
 
-## Требования
+Сверено с Makefile и scripts/test-runner.mk ревизии 9701e9d. Команды Make выполняются в Unix shell; наличие Docker Desktop не устанавливает GNU Make в Windows.
 
-Нужны Git, GNU Make, Python 3.11 (команда `python3`), Node.js 24, pnpm
-11.19.0 и Docker с Compose. На Ubuntu `make setup` устанавливает отсутствующий
-Docker Engine с Compose и попросит повторно войти в SSH-сеанс после добавления
-пользователя в группу `docker`. В Windows запускайте Docker-команды из WSL2
-либо совместимого Docker-исполнителя. Не сохраняйте в Git `.env`, дампы и
-отчёты.
+## Два тестовых контура
 
-## Первый запуск
+| Контур | Запуск | Назначение |
+| --- | --- | --- |
+| Отдельный Linux test-образ | python scripts/build_test_image.py; Compose из [инструкции](docs/UNIX_TESTS.md) | Backend, Frontend, сборка UI и миграции; без Make/Node на хосте |
+| Основной Make/CI | make verify DOCKER=1 | Полный обязательный контур, включая качество и безопасность |
 
-```bash
+Linux test-образ не управляет Docker с помощью socket и не выполняет полный verify. Не считать результаты этих контуров взаимозаменяемыми.
+
+## Подготовка Make-окружения
+
+Нужны Git, GNU Make, Python 3.11+, Node.js 24, pnpm 11.19.0 и Docker Compose. Make setup вызывает scripts/ensure_docker.sh: на поддерживаемой Ubuntu скрипт может устанавливать Docker и менять членство в группе docker. Это изменяет систему; после добавления в группу нужен новый сеанс.
+
+~~~bash
 make setup DOCKER=1
-make up DOCKER=1
-make migrate DOCKER=1
-```
-
-Для запуска приложения с внешней PostgreSQL создайте
-`/etc/InventoryAccountment/InventoryAccountment.env` с `DATABASE_URL`, затем
-используйте:
-
-```bash
-make setup
-make migrate
-make run
-```
-
-Сам API в этом сценарии запускается напрямую, но `make setup` всё равно
-готовит Docker, потому что `make test` всегда выполняется изолированно.
-
-`make run` запускает backend на `0.0.0.0:8000` и frontend на `0.0.0.0:5173`.
-`make up` и Docker-режим публикуют те же порты наружу; для доступа с другого
-компьютера откройте их в firewall только для доверенной сети.
-
-`DOCKER=1` использует только безопасный `.env.example`, базу с суффиксом `_test`
-и отдельный Compose-проект. Для двух запусков в одной рабочей копии укажите свой
-`DOCKER_RUN_ID` во всех командах одного запуска.
-
-Передача `LOCAL=1` завершится ошибкой с подсказкой использовать `DOCKER=1`.
-Внутренние `APP_ENV=test` и `TEST_DATABASE_URL` сохраняют свои имена.
-
-## Команды
-
-```bash
-make run DOCKER=1              # запустить контур в фоне и дождаться healthcheck
-make up DOCKER=1               # собрать и дождаться healthcheck
-make down DOCKER=1             # удалить только тома текущего DOCKER-проекта
-make migrate DOCKER=1          # применить миграции к тестовой БД
-make test                     # всегда изолированные backend/frontend тесты и coverage
-make quality DOCKER=1          # формат, lint, typing, SAST, dependency и secret scan
-make mutation DOCKER=1         # критические контролируемые мутации
-make backup DOCKER=1           # создать проверяемый дамп в backups/
-make restore DOCKER=1 BACKUP=backups/<имя>.dump
-make status DOCKER=1           # вывести статус и логи Docker-контура
-make verify [DOCKER=1]         # полный блокирующий контур и запуск приложения после успеха
-```
-
-`make restore` по умолчанию восстанавливает в отдельную БД. Перезапись
-существующей цели требует `RESTORE_EXISTING=1`, URL, имя БД и совпадающее
-`CONFIRM_TARGET_DATABASE`; не применяйте это к рабочим данным без отдельного
-согласования.
-
-## Что проверяет verify
-
-Контур всегда выполняет проверки в изолированном Docker-контуре, независимо от
-значения параметра `DOCKER`. Он проверяет lock-файлы, форматирование, Ruff, mypy, Bandit, Python- и
-frontend-аудит зависимостей, историю и рабочую копию gitleaks, backend и
-frontend-тесты с coverage не ниже 80%, контролируемые мутации, миграции,
-backup/restore, Trivy-скан того же образа, контейнерный API-сценарий, очистку
-ресурсов и whitespace текущей и веточной разницы.
-
-После успешных проверок команда выполняет `make up DOCKER=<переданное значение>`:
-без параметра запускается рабочий Compose-контур, с `DOCKER=1` — тестовый. Внешний
-том `inventory-accountment-pnpm-store` не относится к Compose-проекту и не
-удаляется при очистке тестового контура.
-
-Отчёты находятся в `reports/`: `bandit.json`, `pip-audit.json`,
-`pnpm-audit.json`, `gitleaks.json`, `trivy-image.json`, `junit.xml`,
-`coverage.xml` и `htmlcov/`. Каталог игнорируется Git и сохраняется как
-артефакт CI даже при ошибке.
-
-## Диагностика и безопасная очистка
-
-При сбое сначала прочтите название шага verify и его лог. `make down DOCKER=1`
-удаляет исключительно Compose-ресурсы выбранного `DOCKER_RUN_ID`; обычный
-`make down` не удаляет тома. Если проверка была прервана, выполните
-`make down DOCKER=1 DOCKER_RUN_ID=<тот же id>`, затем повторите целевой шаг и
-`make verify` либо `make verify DOCKER=1`.
-
-Перед приёмкой запустите в чистой копии `make setup DOCKER=1`, затем
-`make verify DOCKER=1`. Локальный успех не заменяет публикацию ветки, CI,
-независимое одобрение, настройку CODEOWNERS и живую демонстрацию.
-
-## Пошаговые алгоритмы
-
-### `make setup DOCKER=1`
-
-1. Проверить версию Python.
-2. Проверить наличие Docker.
-3. Установить Docker Engine и Docker Compose при отсутствии.
-4. Проверить версию Docker Compose.
-5. Проверить версию Node.js.
-6. Проверить версию pnpm.
-7. Проверить наличие `.env.example`.
-8. Установить `uv` указанной версии через `python3 -m pip`.
-9. Установить Python-зависимости из `uv.lock`.
-10. Установить frontend-зависимости из `frontend/pnpm-lock.yaml`.
-
-### `make setup`
-
-1. Проверить версию Python.
-2. Проверить наличие Docker.
-3. Установить Docker Engine и Docker Compose при отсутствии.
-4. Проверить версию Docker Compose.
-5. Проверить версию Node.js.
-6. Проверить версию pnpm.
-7. Проверить наличие `/etc/InventoryAccountment/InventoryAccountment.env`.
-8. Установить `uv` указанной версии через `python3 -m pip`.
-9. Установить Python-зависимости из `uv.lock`.
-10. Установить frontend-зависимости из `frontend/pnpm-lock.yaml`.
-
-### `make test`
-
-1. Запустить `make test`.
-2. Передать в дочернюю команду `DOCKER=1`.
-3. Сформировать имя изолированного Compose-проекта с `DOCKER_RUN_ID`.
-4. Проверить, что существует `.env.example`.
-5. Проверить `APP_ENV=test` в `.env.example`.
-6. Проверить суффикс `_test` у имени тестовой БД в `.env.example`.
-7. Запустить тестовую PostgreSQL в изолированном Compose-контуре.
-8. Применить Alembic-миграции к тестовой БД.
-9. Запустить backend-тесты через `pytest` в Docker-контейнере приложения.
-10. Собрать отдельный образ frontend-проверок `inventory-accountment-frontend-test:local`.
-11. Создать при отсутствии именованный Docker-том `inventory-accountment-pnpm-store`.
-12. Подключить том к `/pnpm/store` в контейнере frontend-проверок.
-13. Установить frontend-зависимости по `pnpm-lock.yaml`, используя кэш pnpm.
-14. Запустить frontend-тесты командой `pnpm test:run`.
-
-### `make run DOCKER=1`
-
-1. Проверить `.env.example` и параметры тестового окружения.
-2. Собрать образы тестового Compose-проекта.
-3. Запустить PostgreSQL, backend и frontend в фоне.
-4. Опубликовать backend на `0.0.0.0:8001` и frontend на `0.0.0.0:5174`.
-5. Дождаться healthcheck сервисов и освободить терминал.
-
-### `make run`
-
-1. Создать `reports/runtime/` для PID-файлов и логов.
-2. Проверить отсутствие уже работающих backend и frontend, запущенных через `make run`.
-3. Запустить Uvicorn через `nohup` на `0.0.0.0` и записать PID и лог backend.
-4. Загрузить настройки backend из `/etc/InventoryAccountment/InventoryAccountment.env`.
-5. Запустить Vite через `nohup` на `0.0.0.0`, записать PID и лог frontend.
-6. Направить запросы frontend к локальному backend через Vite proxy.
-7. Проверить, что оба процесса не завершились сразу, и освободить терминал.
-
-### `make up DOCKER=1`
-
-1. Проверить `.env.example` и параметры тестового окружения.
-2. Собрать образы тестового Compose-проекта.
-3. Запустить PostgreSQL, backend и frontend в фоне.
-4. Опубликовать backend на `0.0.0.0:8001` и frontend на `0.0.0.0:5174`.
-5. Дождаться healthcheck сервисов.
-
-### `make up`
-
-1. Передать `/etc/InventoryAccountment/InventoryAccountment.env` в Docker Compose.
-2. Собрать образы Compose-проекта.
-3. Запустить PostgreSQL, backend и frontend в фоне.
-4. Опубликовать backend и frontend на `0.0.0.0`.
-5. Дождаться healthcheck сервисов.
-
-### `make down DOCKER=1`
-
-1. Проверить `.env.example` и параметры тестового окружения.
-2. Остановить сервисы тестового Compose-проекта.
-3. Удалить контейнеры, сети и тома тестового Compose-проекта.
-4. Удалить изолированные ресурсы-сироты тестового Compose-проекта.
-
-### `make down`
-
-1. Передать `/etc/InventoryAccountment/InventoryAccountment.env` в Docker Compose.
-2. Остановить фоновые backend и frontend, запущенные через `make run`.
-3. Остановить сервисы Compose-проекта.
-4. Удалить контейнеры, сети и ресурсы-сироты.
-5. Сохранить тома Compose-проекта.
-
-### `make migrate DOCKER=1`
-
-1. Проверить `.env.example` и параметры тестового окружения.
-2. Запустить временный контейнер приложения.
-3. Применить Alembic-миграции к тестовой БД.
-4. Удалить временный контейнер приложения.
-
-### `make migrate`
-
-1. Загрузить настройки из `/etc/InventoryAccountment/InventoryAccountment.env`.
-2. Применить Alembic-миграции через `python3 -m uv`.
-
-### `make test-in-container`
-
-1. Проверить `.env.example` и параметры тестового окружения.
-2. Применить Alembic-миграции к тестовой БД во временном контейнере приложения.
-3. Запустить backend-тесты через `pytest` во временном контейнере приложения.
-4. Собрать отдельный образ frontend-проверок.
-5. Создать при отсутствии именованный Docker-том pnpm store.
-6. Подключить том к контейнеру frontend-проверок.
-7. Установить зависимости с использованием кэша и запустить `pnpm test:run`.
-
-### `make quality DOCKER=1`
-
-1. Проверить `.env.example` и параметры тестового окружения.
-2. Собрать актуальный test-образ backend с текущими исходниками.
-3. Запустить Ruff и mypy во временном контейнере без запуска и ожидания сервисов Compose.
-4. Вывести сообщение о начале SAST-проверки Bandit.
-5. Запустить Bandit без зависимостей Compose, вывести успешный либо ошибочный результат и записать отчёт в `reports/bandit.json`.
-6. Запустить pip-audit без зависимостей Compose и записать отчёт в `reports/pip-audit.json`.
-7. Собрать отдельный образ frontend-проверок.
-8. Подключить постоянный Docker-том с pnpm store.
-9. Установить frontend-зависимости с использованием кэша.
-10. Запустить frontend-проверки качества.
-11. Запустить frontend audit и записать отчёт в `reports/pnpm-audit.json`.
-12. Запустить `make secret-scan`.
-
-### `make quality`
-
-1. Проверить форматирование Python-кода через Ruff.
-2. Запустить Ruff lint.
-3. Запустить mypy.
-4. Создать каталог `reports`.
-5. Вывести сообщение о начале SAST-проверки Bandit.
-6. Запустить Bandit, вывести успешный либо ошибочный результат и записать отчёт в `reports/bandit.json`.
-7. Сформировать список Python-зависимостей.
-8. Запустить pip-audit и записать отчёт в `reports/pip-audit.json`.
-9. Собрать отдельный образ frontend-проверок.
-10. Подключить постоянный Docker-том с pnpm store.
-11. Установить frontend-зависимости с использованием кэша.
-12. Запустить frontend-проверки качества.
-13. Запустить frontend audit и записать отчёт в `reports/pnpm-audit.json`.
-14. Запустить `make secret-scan`.
-
-### `make secret-scan`
-
-1. Создать каталог `reports`.
-2. Запустить Gitleaks в Docker-контейнере.
-3. Проверить рабочую копию репозитория на секреты.
-4. Записать обезличенный отчёт в `reports/gitleaks.json`.
-
-### `make image-scan IMAGE_ID=<идентификатор>`
-
-1. Проверить, что передан `IMAGE_ID`.
-2. Создать каталог `reports`.
-3. Проверить существование образа Docker.
-4. Запустить Trivy в Docker-контейнере.
-5. Проверить образ на уязвимости высокого и критического уровня.
-6. Записать отчёт в `reports/trivy-image.json`.
-
-### `make mutation DOCKER=1`
-
-1. Проверить `.env.example` и параметры тестового окружения.
-2. Применить Alembic-миграции к тестовой БД.
-3. Запустить `scripts/check_critical_mutations.py` без расчёта покрытия.
-
-### `make migration-check DOCKER=1`
-
-1. Проверить `.env.example` и параметры тестового окружения.
-2. Запустить `scripts/migration_check.py` во временном контейнере приложения.
-
-### `make backup DOCKER=1`
-
-1. Проверить `.env.example` и параметры тестового окружения.
-2. Запустить временный контейнер `pg-tools`.
-3. Создать дамп тестовой БД в `backups/`.
-
-### `make backup`
-
-1. Передать `/etc/InventoryAccountment/InventoryAccountment.env` в Docker Compose.
-2. Запустить временный контейнер `pg-tools`.
-3. Создать дамп БД в `backups/`.
-
-### `make restore BACKUP=backups/<имя>.dump DOCKER=1`
-
-1. Проверить `.env.example` и параметры тестового окружения.
-2. Проверить наличие параметра `BACKUP`.
-3. Проверить путь `BACKUP` в каталоге `backups/`.
-4. Передать параметры целевой БД в контейнер `pg-tools`.
-5. Запустить восстановление из указанного дампа.
-
-### `make restore BACKUP=backups/<имя>.dump`
-
-1. Передать `/etc/InventoryAccountment/InventoryAccountment.env` в Docker Compose.
-2. Проверить наличие параметра `BACKUP`.
-3. Проверить путь `BACKUP` в каталоге `backups/`.
-4. Передать параметры целевой БД в контейнер `pg-tools`.
-5. Запустить восстановление из указанного дампа.
-
-### `make backup-restore-check DOCKER=1`
-
-1. Проверить `.env.example` и параметры тестового окружения.
-2. Применить Alembic-миграции к тестовой БД.
-3. Запустить `scripts/backup_restore_check.sh`.
-4. Создать дамп, повредить тестовые данные и восстановить их.
-5. Проверить восстановленные данные.
-
-### `make lock-check`
-
-1. Проверить соответствие `uv.lock` зависимостям проекта.
-2. Собрать отдельный образ frontend-проверок.
-3. Создать при отсутствии именованный Docker-том pnpm store.
-4. Установить frontend-зависимости по `pnpm-lock.yaml`, используя кэш pnpm.
-
-### `make status [DOCKER=1]`
-
-1. Определить имя Compose-проекта: `inventory-accountment` либо тестовое имя с `DOCKER_RUN_ID`.
-2. Проверить доступность Docker Engine.
-3. Найти все контейнеры проекта, включая остановленные.
-4. Вывести имена, статусы и опубликованные порты найденных контейнеров.
-5. Вывести последние 50 строк логов каждого найденного контейнера.
-6. Вернуть код `0`, если найден хотя бы один работающий контейнер.
-7. При отсутствии работающих контейнеров вывести сообщение об этом.
-8. Проверить локальный backend на `127.0.0.1:8000/health/live` и `/health/ready`.
-9. Проверить локальный frontend на `127.0.0.1:5173`.
-10. Вернуть код `0`, если локальные backend и frontend доступны; иначе вернуть код `2`.
-
-### `make container-smoke DOCKER=1`
-
-1. Проверить `.env.example` и параметры тестового окружения.
-2. Зарегистрировать очистку ресурсов тестового Compose-проекта.
-3. Собрать образы и запустить сервисы в фоне.
-4. Дождаться healthcheck сервисов.
-5. Запустить `make image-scan` для образа приложения.
-6. Применить Alembic-миграции к тестовой БД.
-7. Запустить `scripts/container_smoke.py` в контейнере приложения.
-8. Вывести состояние сервисов Compose-проекта.
-9. Удалить контейнеры, сети, тома и ресурсы-сироты тестового Compose-проекта.
-
-### `make check-docker-environment DOCKER=1`
-
-1. Проверить значение `DOCKER=1`.
-2. Проверить непустое значение `DOCKER_RUN_ID`.
-3. Проверить наличие `.env.example`.
-4. Проверить значение `APP_ENV=test` в `.env.example`.
-5. Проверить суффикс `_test` у `POSTGRES_DB` в `.env.example`.
-
-### `make check-docker-project-clean DOCKER=1`
-
-1. Выполнить `make check-docker-environment DOCKER=1`.
-2. Проверить отсутствие контейнеров тестового Compose-проекта.
-3. Проверить отсутствие томов тестового Compose-проекта.
-
-### `make check-working-tree-diff`
-
-1. Проверить рабочую копию командой `git diff --check`.
-
-### `make check-branch-diff`
-
-1. Определить общую базу текущей ветки и `BASE_REF`.
-2. Проверить веточную разницу командой `git diff --check`.
-
-### `make verify [DOCKER=1]`
-
-1. Проверить `.env.example` и параметры изолированного тестового Docker-контура независимо от переданного `DOCKER`.
-2. Зарегистрировать очистку ресурсов тестового Compose-проекта с сохранением внешнего pnpm store.
-3. Выполнить `make lock-check`.
-4. Вывести начало проверки качества и SAST, затем выполнить `make quality DOCKER=1` с сообщением об успешном либо ошибочном результате Bandit.
-5. Выполнить `make test`.
-6. Выполнить `make mutation DOCKER=1`.
-7. Выполнить `make migration-check DOCKER=1`.
-8. Выполнить `make backup-restore-check DOCKER=1`.
-9. Выполнить `make container-smoke DOCKER=1`.
-10. Выполнить `make check-docker-project-clean DOCKER=1`.
-11. Выполнить `make check-working-tree-diff`.
-12. Выполнить `make check-branch-diff`.
-13. Удалить контейнеры, сети, тома и ресурсы-сироты тестового Compose-проекта, сохранив внешний том `inventory-accountment-pnpm-store`.
-14. После успешных проверок выполнить `make up` с переданным значением `DOCKER`.
+make up DOCKER=1 DOCKER_RUN_ID=local-check
+make migrate DOCKER=1 DOCKER_RUN_ID=local-check
+
+~~~
+
+Setup проверяет версии/доступность инструментов, наличие файла конфигурации, устанавливает uv 0.5.29, затем выполняет uv sync --frozen --extra dev и pnpm install --frozen-lockfile. Он не создаёт рабочий файл настроек. Использовать .env.example только для тестового режима; обычный режим ожидает /etc/InventoryAccountment/InventoryAccountment.env.
+
+## Основные команды
+
+| Команда | Фактическое поведение |
+| --- | --- |
+| make run | Фоновые Uvicorn и Vite на 0.0.0.0; PID/логи в reports/runtime; отдельная БД должна быть доступна |
+| make run DOCKER=1 / make up DOCKER=1 | Собирает и запускает тестовый Compose, ожидает healthcheck |
+| make up | Запускает docker-compose.yaml с системным env-файлом |
+| make migrate | Alembic upgrade head через uv, использует DATABASE_URL |
+| make migrate DOCKER=1 | Alembic в тестовом контейнере app |
+| make test | Всегда дочерний test-in-container DOCKER=1: миграции и pytest, затем сборка frontend-test и Vitest |
+| make quality DOCKER=1 | Ruff format/check, mypy, Bandit, Python audit; Frontend quality/audit и gitleaks |
+| make mutation DOCKER=1 | Контролируемые мутации; timeout/ошибка подготовки не считаются успехом |
+| make migration-check DOCKER=1 | Чистая и заполненная временные БД, upgrade/downgrade, сравнение metadata |
+| make backup / make restore | pg-tools выбранного Compose-проекта, а не произвольная внешняя DATABASE_URL |
+| make backup-restore-check DOCKER=1 | Повреждение и восстановление только временных тестовых БД |
+| make status DOCKER=1 | Состояние/последние 50 строк логов выбранного Compose-проекта |
+| make down DOCKER=1 | Удаляет контейнеры, сеть и тома выбранного тестового проекта |
+| make down | Останавливает локальные фоновые процессы и обычный Compose; его тома сохраняет |
+
+Make test не содержит явной пересборки Backend: после изменений сначала make up DOCKER=1 с тем же DOCKER_RUN_ID либо используйте сборщик отдельного Linux-образа. Новые тесты не появятся внутри старого образа автоматически.
+
+Make status возвращает успех уже при наличии работающего контейнера; это не полная readiness-проверка. Если контейнеров нет, проверяет HTTP Backend и Frontend на локальных портах APP_PORT/FRONTEND_PORT, по умолчанию 8000/5173.
+
+LOCAL и TEST как Make-параметры отклоняются. Для разных запусков задавайте уникальный DOCKER_RUN_ID и используйте его во всех командах. Порты тестового Make-контура — 8001/5174; при параллельной публикации портов одного ID недостаточно, нужны также разные порты. Отдельный test-runner порты не публикует.
+
+## Полный verify
+
+~~~bash
+make verify DOCKER=1 DOCKER_RUN_ID=local-check BASE_REF=origin/main
+
+~~~
+
+BASE_REF должен разрешаться в Git; выберите существующую базовую ветку проекта. Проверки выполняются последовательно:
+
+1. lock-check: uv.lock и pnpm-lock.yaml.
+2. quality: формат, Ruff, mypy, Bandit, аудит зависимостей и gitleaks.
+3. test: Backend с покрытием 80% и Frontend Vitest (его порог coverage не задан).
+4. mutation, migration-check и backup-restore-check.
+5. container-smoke, проверка очистки проекта, whitespace рабочей и веточной разницы.
+
+Внутри container-smoke после up вызывается Trivy, затем миграции и HTTP smoke. Сейчас имя образа для Trivy жёстко задано: inventory-accountment-local-ubuntu-verify-app:latest. Совпадение с образом конкретного прогона не гарантировано; это незавершённое требование приёмки, а не разрешённое исключение.
+
+При первой ошибке verify прекращается, trap очищает тестовый Compose-проект. Внешний том pnpm inventory-accountment-pnpm-store сохраняется. После успешных проверок verify вызывает make up с переданным DOCKER: с DOCKER=1 тестовый контур снова запускается. Уберите его после проверки вручную:
+
+~~~bash
+make down DOCKER=1 DOCKER_RUN_ID=local-check
+
+~~~
+
+Не запускать verify без DOCKER=1, если последующий запуск обычного окружения не планируется.
+
+## Отчёты и диагностика
+
+Основной контур пишет reports/junit.xml, coverage.xml, htmlcov/, bandit.json, pip-audit.json, pnpm-audit.json, gitleaks.json, trivy-image.json по мере выполнения этапов. Наличие файла само по себе не доказывает успех или принадлежность актуальному коммиту. Последующий прогон может перезаписать его. Frontend JUnit в основном Make-контуре отдельно не настроен; в Linux test-runner он сохраняется.
+
+При сбое сохранить команду, exit code, SHA и логи; отдельно запускать независимые проверки для диагностики допустимо, но это не отменяет отказ verify. Не снижать пороги, не отключать задания. Не считать старый образ проверкой текущей рабочей копии.
+
+## Backup и restore
+
+~~~bash
+make backup DOCKER=1 DOCKER_RUN_ID=local-check
+make restore DOCKER=1 DOCKER_RUN_ID=local-check BACKUP=backups/имя.dump
+
+~~~
+
+Замените имя дампа существующим. Restore по умолчанию создаёт отдельную БД; перезапись требует RESTORE_EXISTING=1, TARGET_DATABASE_URL, TARGET_DATABASE и совпадающего CONFIRM_TARGET_DATABASE. До разрушительной операции проверить точную цель и разрешение. Не применять удаление тестовых томов к рабочему проекту.
+
+В обычном Compose pg-tools подключается к сервису db. Если приложение использует внешнюю DATABASE_URL, make backup не становится автоматически backup этой внешней БД. Для неё нужен отдельно согласованный план PostgreSQL backup/restore.
+
+## Приёмка
+
+Успешный verify не заменяет успешный CI актуального SHA, независимое одобрение, проверку критических файлов и живую демонстрацию. Последние сохранённые результаты и незавершённые проверки — в [TEST_DEFECTS.md](TEST_DEFECTS.md). В этой актуализации документации приложение и инфраструктура не запускались.

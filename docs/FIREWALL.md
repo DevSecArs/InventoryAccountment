@@ -1,137 +1,87 @@
-# Настройка firewall для frontend, API и PostgreSQL
+# Сеть, firewall и доступ к MVP
 
-Инструкция рассчитана на два сервера с Ubuntu и UFW:
+Различайте способы запуска:
 
-```text
-Клиенты → app-server:5173 → app-server:8000 → db-server:5432
-```
+| Режим | Frontend | Backend | PostgreSQL |
+| --- | --- | --- | --- |
+| make run | 0.0.0.0:5173 | 0.0.0.0:8000 | Внешняя DATABASE_URL |
+| Тестовый Make/Compose | 0.0.0.0:5174 | 0.0.0.0:8001 | Только сеть Compose |
+| Обычный Compose | 0.0.0.0:5173 по умолчанию | 0.0.0.0:APP_PORT | 127.0.0.1:POSTGRES_PORT, по умолчанию 5433 |
+| Deploy/systemd по умолчанию | 0.0.0.0:4173 (preview) | 127.0.0.1:8000 | Внешняя БД, порт обычно 5432 |
+| Отдельный Linux test-runner | Не публикуется | Не публикуется | Только сеть своего проекта |
 
-Клиенты подключаются к frontend и API на `app-server`. PostgreSQL на `db-server`
-принимает соединения только от `app-server`. Используйте частные адреса сети,
-а не публикуйте PostgreSQL в интернет.
+Порты в примерах — значения конфигурации по умолчанию, не результаты проверки сервера. Клиент браузера обычно обращается к Frontend, который проксирует /api и /health; прямое открытие API клиентам не обязательно.
 
-В командах замените значения:
+## Службы systemd и UFW
 
-- `<CLIENT_NETWORK>` — доверенная сеть клиентов, например `10.10.0.0/24`;
-- `<APP_SERVER_IP>` — частный IP сервера API, например `10.20.0.10`;
-- `<DB_SERVER_IP>` — частный IP сервера PostgreSQL, например `10.20.0.20`;
-- `<SSH_NETWORK>` — сеть администраторов, например `10.10.1.0/24`.
+Пример двух серверов: приложение 10.20.0.10, БД 10.20.0.20, доверенные клиенты 10.10.0.0/24, администраторы 10.10.1.0/24. Это обезличенные значения, замените их своей сетью.
 
-Перед включением UFW откройте доступ по SSH из `<SSH_NETWORK>`, иначе можно
-потерять доступ к серверу. Выполняйте настройку через консоль провайдера или
-из второй SSH-сессии, чтобы сразу проверить соединение.
+На сервере приложения для учебного preview:
 
-## 1. Открыть frontend и API для клиентов
-
-По умолчанию unit из инструкции systemd слушает `127.0.0.1`, поэтому клиенты
-его не видят. Если клиенты должны обращаться к FastAPI напрямую, на
-`app-server` измените `ExecStart` в
-`/etc/systemd/system/inventory-accountment.service`:
-
-```ini
-ExecStart=/opt/inventory-accountment/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-Примените изменение:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart inventory-accountment.service
-```
-
-Откройте только SSH для администраторов, frontend и API для сети клиентов:
-
-```bash
+~~~bash
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
-sudo ufw allow from <SSH_NETWORK> to any port 22 proto tcp
-sudo ufw allow from <CLIENT_NETWORK> to any port 5173 proto tcp
-sudo ufw allow from <CLIENT_NETWORK> to any port 8000 proto tcp
+sudo ufw allow from 10.10.1.0/24 to any port 22 proto tcp
+sudo ufw allow from 10.10.0.0/24 to any port 4173 proto tcp
 sudo ufw enable
 sudo ufw status numbered
-```
 
-Не используйте правило `ufw allow 8000`: оно откроет API всем адресам. В
-текущем приложении нет аутентификации, поэтому ограничение доверенной сетью
-обязательно. Если перед API установлен reverse proxy, вместо порта `8000`
-откройте для клиентов только его HTTPS-порт `443`, а Uvicorn оставьте на
-`127.0.0.1`.
+~~~
 
-## 2. Закрыть PostgreSQL для клиентов
+Сначала подтвердить доступ SSH и наличие консоли восстановления. Не выполнять пример с чужими адресами на рабочем сервере. Для прямого API отдельно согласуйте EXPOSE_BACKEND=true/BACKEND_HOST и узкое правило; по умолчанию deploy этого не делает.
 
-На `db-server` PostgreSQL должен слушать только частный адрес. В
-`postgresql.conf` укажите:
+В приложении есть аутентификация и CSRF, но они не заменяют сетевых ограничений. При APP_ENV=production cookie Secure требует HTTPS. Для production открыть клиентам HTTPS reverse proxy, оставить Backend на loopback и не считать HTTP-preview настроенным TLS. Nginx/TLS-конфигурации в репозитории нет.
 
-```ini
-listen_addresses = '<DB_SERVER_IP>'
-```
+Для Docker правила опубликованных портов нужно проверять отдельно от host-процессов: контейнерная публикация управляется Docker-сетью. Нельзя считать наличие правил UFW доказательством недоступности опубликованного контейнерного порта. Проверяйте фактический доступ из разрешённой и запрещённой сети и правила внешнего firewall.
 
-В `pg_hba.conf` разрешите доступ к базе только для пользователя приложения с
-IP `app-server`:
+## PostgreSQL на отдельном сервере
 
-```text
-host    inventory    inventory    <APP_SERVER_IP>/32    scram-sha-256
-```
+В postgresql.conf задайте частный адрес сервера БД:
 
-Путь к этим файлам зависит от версии PostgreSQL. Узнать его можно командой:
+~~~ini
+listen_addresses = '10.20.0.20'
 
-```bash
+~~~
+
+В pg_hba.conf ограничьте доступ конкретной БД/пользователем/IP приложения:
+
+~~~text
+host inventory inventory 10.20.0.10/32 scram-sha-256
+
+~~~
+
+Фактические имена БД/пользователя должны совпадать с DATABASE_URL; учётные данные здесь не создаются. Пути конфигурации можно узнать через администратора PostgreSQL:
+
+~~~bash
 sudo -u postgres psql -c 'SHOW config_file;'
 sudo -u postgres psql -c 'SHOW hba_file;'
-```
 
-Перезапустите PostgreSQL после изменения конфигурации:
+~~~
 
-```bash
-sudo systemctl restart postgresql
-```
+После контролируемого изменения перезапустите PostgreSQL. На сервере БД разрешите SSH администратору и 5432 только серверу приложения:
 
-Затем на `db-server` включите firewall. Он разрешает порт PostgreSQL только
-одному серверу приложения:
-
-```bash
+~~~bash
+sudo ufw allow from 10.10.1.0/24 to any port 22 proto tcp
+sudo ufw allow from 10.20.0.10 to any port 5432 proto tcp
 sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw allow from <SSH_NETWORK> to any port 22 proto tcp
-sudo ufw allow from <APP_SERVER_IP> to any port 5432 proto tcp
 sudo ufw enable
 sudo ufw status numbered
-```
 
-## 3. Указать БД в настройках приложения
+~~~
 
-На `app-server` в
-`/etc/InventoryAccountment/InventoryAccountment.env` укажите приватный адрес
-сервера БД:
+Deploy с DEPLOY_ROLE=db настраивает UFW, но не устанавливает PostgreSQL и не редактирует pg_hba.conf/listen_addresses.
 
-```ini
-DATABASE_URL=postgresql+psycopg2://inventory:<PASSWORD>@<DB_SERVER_IP>:5432/inventory
-```
+## Проверка и диагностика
 
-После изменения настроек перезапустите API:
+На сервере приложения проверить /health/ready по адресу Backend, а с клиента — доступ через Frontend/proxy. Убедиться, что запрещённый клиент не может подключиться к БД; разрешённый app-server может. Ready проверяет SELECT 1, а не все операции и миграции.
 
-```bash
-sudo systemctl restart inventory-accountment.service
-```
+Для systemd по умолчанию:
 
-## 4. Проверить доступ
-
-На `app-server`:
-
-```bash
+~~~bash
 curl --fail http://127.0.0.1:8000/health/ready
-```
+sudo systemctl status InventoryAccountment.service --no-pager
+sudo journalctl -u InventoryAccountment.service -n 100 --no-pager
 
-С клиентского компьютера из `<CLIENT_NETWORK>`:
+~~~
 
-```bash
-curl --fail http://<APP_SERVER_IP>:8000/health/ready
-```
-
-Попытка подключения к `<DB_SERVER_IP>:5432` с клиентского компьютера должна
-не пройти. С `app-server` подключение к БД должно проходить; результат
-health-проверки выше подтверждает его на уровне приложения.
-
-Проверяйте также сетевой firewall провайдера или облака: он должен повторять
-те же правила — API-порт доступен только клиентской сети, а `5432` только
-`<APP_SERVER_IP>`.
+После изменения DATABASE_URL перезапустить InventoryAccountment.service. Правила провайдера/облака должны соответствовать ограничениям ОС. Изменение firewall не заменяет HTTPS, авторизацию и проверку реального входа в браузере.
