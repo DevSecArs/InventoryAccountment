@@ -41,7 +41,9 @@ def _normalize_document_number(value: str) -> str:
 
 def _require_timezone(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
-        raise PydanticCustomError("received_at_timezone", "Дата поступления должна содержать часовой пояс")
+        raise PydanticCustomError(
+            "received_at_timezone", "Дата поступления должна содержать часовой пояс"
+        )
     return value
 
 
@@ -225,9 +227,15 @@ def get_receipt(db: Session, receipt_id: str) -> Receipt | None:
 
 
 def get_receipt_for_update(db: Session, receipt_id: str) -> Receipt | None:
-    receipt = db.execute(select(Receipt).where(Receipt.id == receipt_id).with_for_update()).scalar_one_or_none()
+    receipt = db.execute(
+        select(Receipt).where(Receipt.id == receipt_id).with_for_update(of=Receipt)
+    ).scalar_one_or_none()
     if receipt is not None:
-        db.execute(select(ReceiptItem).where(ReceiptItem.receipt_id == receipt_id).with_for_update()).scalars().all()
+        db.execute(
+            select(ReceiptItem)
+            .where(ReceiptItem.receipt_id == receipt_id)
+            .with_for_update(of=ReceiptItem)
+        ).scalars().all()
     return receipt
 
 
@@ -294,24 +302,46 @@ def delete_receipt(db: Session, receipt: Receipt) -> None:
 
 
 def _check_posting_links(db: Session, receipt: Receipt) -> None:
-    supplier = db.execute(select(Supplier).where(Supplier.id == receipt.supplier_id).with_for_update()).scalar_one_or_none()
+    supplier = db.execute(
+        select(Supplier).where(Supplier.id == receipt.supplier_id).with_for_update()
+    ).scalar_one_or_none()
     if supplier is None or supplier.archived_at is not None:
         raise ValueError("Поставщик архивирован или недоступен")
-    items = db.execute(
-        select(ReceiptItem).where(ReceiptItem.receipt_id == receipt.id).order_by(ReceiptItem.material_id).with_for_update()
-    ).scalars().all()
+    items = (
+        db.execute(
+            select(ReceiptItem)
+            .where(ReceiptItem.receipt_id == receipt.id)
+            .order_by(ReceiptItem.material_id)
+            .with_for_update(of=ReceiptItem)
+        )
+        .scalars()
+        .all()
+    )
     if not items:
         raise ValueError("Поступление должно содержать хотя бы одну строку")
     material_ids = [item.material_id for item in items]
     if len(material_ids) != len(set(material_ids)):
         raise ValueError("Материал повторяется")
-    materials = db.execute(
-        select(Material).where(Material.id.in_(material_ids)).order_by(Material.id).with_for_update()
-    ).scalars().all()
-    if len(materials) != len(material_ids) or any(material.archived_at is not None for material in materials):
+    materials = (
+        db.execute(
+            select(Material)
+            .where(Material.id.in_(material_ids))
+            .order_by(Material.id)
+            .with_for_update(of=Material)
+        )
+        .scalars()
+        .all()
+    )
+    if len(materials) != len(material_ids) or any(
+        material.archived_at is not None for material in materials
+    ):
         raise ValueError("Материал архивирован или недоступен")
     unit_ids = sorted({material.unit_id for material in materials})
-    units = db.execute(select(Unit).where(Unit.id.in_(unit_ids)).order_by(Unit.id).with_for_update()).scalars().all()
+    units = (
+        db.execute(select(Unit).where(Unit.id.in_(unit_ids)).order_by(Unit.id).with_for_update())
+        .scalars()
+        .all()
+    )
     if len(units) != len(unit_ids) or any(unit.archived_at is not None for unit in units):
         raise ValueError("Единица измерения архивирована или недоступна")
 
@@ -359,8 +389,12 @@ def receipt_to_response(receipt: Receipt) -> dict[str, object]:
                 "material_sku": item.material.sku if item.material else None,
                 "material_name": item.material.name if item.material else None,
                 "unit_id": item.material.unit_id if item.material else None,
-                "unit_code": item.material.unit.code if item.material and item.material.unit else None,
-                "unit_name": item.material.unit.name if item.material and item.material.unit else None,
+                "unit_code": item.material.unit.code
+                if item.material and item.material.unit
+                else None,
+                "unit_name": item.material.unit.name
+                if item.material and item.material.unit
+                else None,
             }
             for item in receipt.items
         ],
