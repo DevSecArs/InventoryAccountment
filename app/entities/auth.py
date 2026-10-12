@@ -199,6 +199,19 @@ def require_csrf(request: Request, user: User = CurrentUser) -> User:
 CsrfUser = Depends(require_csrf)
 
 
+def require_receipt_writer(user: User = CsrfUser) -> User:
+    """Разрешить изменять поступления только оператору и администратору."""
+    if user.role not in {"admin", "operator"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Недостаточно прав для изменения поступлений",
+        )
+    return user
+
+
+ReceiptWriter = Depends(require_receipt_writer)
+
+
 def require_admin(user: User = CsrfUser) -> User:
     if user.role != "admin":
         raise HTTPException(

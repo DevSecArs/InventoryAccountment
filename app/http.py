@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.entities.routers import (
     auth_router,
     material_router,
+    report_router,
     receipt_router,
     supplier_router,
     unit_router,
@@ -165,7 +166,7 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
     return application
 
 
-app = create_app([auth_router, unit_router, material_router, supplier_router, receipt_router])
+app = create_app([auth_router, unit_router, material_router, supplier_router, receipt_router, report_router])
 
 # Тип зависимости для будущих роутеров сущностей.
 DatabaseSession = Annotated[Session, Depends(get_db_session)]

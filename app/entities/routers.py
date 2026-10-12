@@ -1,18 +1,25 @@
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from datetime import datetime
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import Response as FastAPIResponse
 from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.entities import auth as auth_service
 from app.entities import material as material_service
 from app.entities import receipt as receipt_service
+from app.entities import receipt_status_history as receipt_history_service
+from app.entities import supply_report as supply_report_service
 from app.entities import supplier as supplier_service
 from app.entities import unit as unit_service
 from app.postgresql import DatabaseSession
 
 auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 receipt_router = APIRouter(prefix="/receipts", tags=["Receipts"])
+report_router = APIRouter(prefix="/reports", tags=["Reports"])
 
 
 @receipt_router.post(
@@ -21,10 +28,10 @@ receipt_router = APIRouter(prefix="/receipts", tags=["Receipts"])
 def create_receipt(
     payload: receipt_service.ReceiptCreate,
     db: DatabaseSession,
-    user: auth_service.User = auth_service.CsrfUser,
-) -> receipt_service.Receipt:
+    user: auth_service.User = auth_service.ReceiptWriter,
+) -> dict[str, object]:
     try:
-        return receipt_service.create_receipt(db, payload)
+        return receipt_service.receipt_to_response(receipt_service.create_receipt(db, payload))
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ValueError as error:
@@ -42,19 +49,37 @@ def list_receipts(
     user: auth_service.User = auth_service.CurrentUser,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
+    supplier_id: str | None = None,
+    status_filter: str | None = Query(None, alias="status"),
+    search: str | None = None,
+    received_from: Annotated[datetime | None, Query(alias="from")] = None,
+    received_to: Annotated[datetime | None, Query(alias="to")] = None,
 ) -> dict[str, Any]:
-    items, total = receipt_service.get_receipts(db, skip, limit)
-    return {"items": items, "total": total, "skip": skip, "limit": limit}
+    if received_from and (received_from.tzinfo is None or received_from.utcoffset() is None):
+        raise HTTPException(status_code=422, detail="Параметр from должен содержать часовой пояс")
+    if received_to and (received_to.tzinfo is None or received_to.utcoffset() is None):
+        raise HTTPException(status_code=422, detail="Параметр to должен содержать часовой пояс")
+    if received_from and received_to and received_from >= received_to:
+        raise HTTPException(status_code=422, detail="Параметр from должен быть меньше to")
+    items, total = receipt_service.get_receipts(
+        db, skip, limit, supplier_id, status_filter, search, received_from, received_to
+    )
+    return {
+        "items": [receipt_service.receipt_to_response(item) for item in items],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @receipt_router.get("/{receipt_id}", response_model=receipt_service.ReceiptResponse)
 def read_receipt(
     receipt_id: str, db: DatabaseSession, user: auth_service.User = auth_service.CurrentUser
-) -> receipt_service.Receipt:
+) -> dict[str, object]:
     receipt = receipt_service.get_receipt(db, receipt_id)
     if receipt is None:
         raise HTTPException(status_code=404, detail="Поступление не найдено")
-    return receipt
+    return receipt_service.receipt_to_response(receipt)
 
 
 @receipt_router.patch("/{receipt_id}", response_model=receipt_service.ReceiptResponse)
@@ -62,13 +87,13 @@ def patch_receipt(
     receipt_id: str,
     payload: receipt_service.ReceiptUpdate,
     db: DatabaseSession,
-    user: auth_service.User = auth_service.CsrfUser,
-) -> receipt_service.Receipt:
-    receipt = receipt_service.get_receipt(db, receipt_id)
+    user: auth_service.User = auth_service.ReceiptWriter,
+) -> dict[str, object]:
+    receipt = receipt_service.get_receipt_for_update(db, receipt_id)
     if receipt is None:
         raise HTTPException(status_code=404, detail="Поступление не найдено")
     try:
-        return receipt_service.update_receipt(db, receipt, payload)
+        return receipt_service.receipt_to_response(receipt_service.update_receipt(db, receipt, payload))
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ValueError as error:
@@ -78,6 +103,92 @@ def patch_receipt(
             status_code=status.HTTP_409_CONFLICT,
             detail="Конфликт ограничения целостности поступления",
         ) from error
+
+
+@receipt_router.delete("/{receipt_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_receipt(
+    receipt_id: str,
+    db: DatabaseSession,
+    user: auth_service.User = auth_service.ReceiptWriter,
+) -> None:
+    receipt = receipt_service.get_receipt_for_update(db, receipt_id)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="Поступление не найдено")
+    try:
+        receipt_service.delete_receipt(db, receipt)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@receipt_router.post("/{receipt_id}/post", response_model=receipt_service.ReceiptResponse)
+def post_receipt(
+    receipt_id: str,
+    db: DatabaseSession,
+    user: auth_service.User = auth_service.ReceiptWriter,
+) -> dict[str, object]:
+    try:
+        receipt = receipt_service.post_receipt(db, receipt_id)
+        db.commit()
+        return receipt_service.receipt_to_response(receipt)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except IntegrityError as error:
+        raise HTTPException(status_code=409, detail="Конфликт проведения поступления") from error
+
+
+@receipt_router.get("/{receipt_id}/history", response_model=receipt_history_service.ReceiptHistoryResponse)
+def receipt_history(
+    receipt_id: str, db: DatabaseSession, user: auth_service.User = auth_service.CurrentUser
+) -> dict[str, object]:
+    if receipt_service.get_receipt(db, receipt_id) is None:
+        raise HTTPException(status_code=404, detail="Поступление не найдено")
+    return {"items": receipt_service.get_history(db, receipt_id)}
+
+
+def _report_period(
+    date_from: Annotated[datetime, Query(alias="from")],
+    date_to: Annotated[datetime, Query(alias="to")],
+) -> tuple[datetime, datetime]:
+    try:
+        supply_report_service.validate_period(date_from, date_to)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return date_from, date_to
+
+
+@report_router.get("/supplies", response_model=supply_report_service.SupplyReportResponse)
+def supply_report(
+    db: DatabaseSession,
+    period: Annotated[tuple[datetime, datetime], Depends(_report_period)],
+    user: auth_service.User = auth_service.CurrentUser,
+    supplier_id: str | None = None,
+    material_id: str | None = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+) -> dict[str, object]:
+    return supply_report_service.get_supply_report(
+        db, period[0], period[1], supplier_id, material_id, skip, limit
+    )
+
+
+@report_router.get("/supplies/export")
+def export_supply_report(
+    db: DatabaseSession,
+    period: Annotated[tuple[datetime, datetime], Depends(_report_period)],
+    user: auth_service.User = auth_service.CurrentUser,
+    supplier_id: str | None = None,
+    material_id: str | None = None,
+) -> FastAPIResponse:
+    payload = supply_report_service.render_csv(
+        supply_report_service.get_supply_export(db, period[0], period[1], supplier_id, material_id)
+    )
+    return FastAPIResponse(
+        content=payload,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="supplies.csv"'},
+    )
 
 
 def _set_session_cookie(response: Response, token: str) -> None:
@@ -321,10 +432,13 @@ def archive_material(
 def purge_material(
     material_id: str, db: DatabaseSession, user: auth_service.User = auth_service.AdminUser
 ) -> None:
-    if not material_service.purge_archived_material(db, material_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Архивный материал не найден"
-        )
+    try:
+        if not material_service.purge_archived_material(db, material_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Архивный материал не найден"
+            )
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
 
 
 supplier_router = APIRouter(prefix="/suppliers", tags=["Suppliers"])
@@ -396,7 +510,10 @@ def archive_supplier(
 def purge_supplier(
     supplier_id: str, db: DatabaseSession, user: auth_service.User = auth_service.AdminUser
 ) -> None:
-    if not supplier_service.purge_archived_supplier(db, supplier_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Архивный поставщик не найден"
-        )
+    try:
+        if not supplier_service.purge_archived_supplier(db, supplier_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Архивный поставщик не найден"
+            )
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
