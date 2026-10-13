@@ -12,11 +12,11 @@ test:
 
 backend:
 	alembic upgrade head
-	pytest tests --junitxml=reports/backend-junit.xml
+	python scripts/localize_test_output.py -- pytest tests --junitxml=reports/backend-junit.xml
 
 frontend:
 	@status=0; \
-	pnpm --dir frontend exec vitest run --reporter=default --reporter=junit --outputFile.junit=/app/reports/frontend-junit.xml || status=1; \
+	node scripts/localize_test_output.mjs -- pnpm --dir frontend exec vitest run --reporter=default --reporter=junit --outputFile.junit=/app/reports/frontend-junit.xml || status=1; \
 	pnpm --dir frontend build || status=1; \
 	exit $$status
 

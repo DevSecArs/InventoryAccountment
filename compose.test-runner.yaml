@@ -24,5 +24,8 @@ services:
         condition: service_healthy
     volumes:
       - ./reports/unix-tests:/app/reports
+      - ./scripts/test-runner.mk:/app/scripts/test-runner.mk:ro
+      - ./scripts/localize_test_output.py:/app/scripts/localize_test_output.py:ro
+      - ./scripts/localize_test_output.mjs:/app/scripts/localize_test_output.mjs:ro
 volumes:
   test_data:

@@ -176,12 +176,12 @@ test-in-container:
 	@echo '==> Backend: применяю миграции к тестовой БД'
 	@$(COMPOSE) run --rm --user root app alembic upgrade head
 	@echo '==> Backend: запускаю pytest и проверку покрытия'
-	@$(COMPOSE) run --rm --user root app pytest
+	@$(COMPOSE) run --rm --user root app python scripts/localize_test_output.py -- pytest
 	@echo '==> Frontend: подготавливаю test-образ и кэш pnpm'
 	@$(MAKE) frontend-test-image
 	@$(MAKE) ensure-pnpm-store
 	@echo '==> Frontend: запускаю тесты из проектного образа'
-	@docker run --rm -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)"
+	@docker run --rm -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)" sh -lc 'pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && node /scripts/localize_test_output.mjs -- pnpm test:run'
 
 frontend-test-image:
 	@echo '==> Frontend: собираю образ $(FRONTEND_TEST_IMAGE)'

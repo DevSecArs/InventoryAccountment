@@ -33,7 +33,7 @@ Setup проверяет версии/доступность инструмен�
 | make up | Запускает docker-compose.yaml с системным env-файлом |
 | make migrate | Alembic upgrade head через uv, использует DATABASE_URL |
 | make migrate DOCKER=1 | Alembic в тестовом контейнере app |
-| make test | Всегда дочерний test-in-container DOCKER=1: миграции и pytest, затем сборка frontend-test и Vitest |
+| make test | Всегда дочерний test-in-container DOCKER=1: миграции и pytest, затем сборка frontend-test и Vitest; сводки pytest/Vitest выводятся по-русски |
 | make quality DOCKER=1 | Ruff format/check, mypy, Bandit, Python audit; Frontend quality/audit и gitleaks |
 | make mutation DOCKER=1 | Контролируемые мутации; timeout/ошибка подготовки не считаются успехом |
 | make migration-check DOCKER=1 | Чистая и заполненная временные БД, upgrade/downgrade, сравнение metadata |
