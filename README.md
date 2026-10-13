@@ -46,6 +46,20 @@ deploy/                       # развёртывание из исходник
 
 HTTP-слой использует модели и операции сущностей; сущности используют общий модуль PostgreSQL. Сессия выполняет commit/rollback через session_scope; маршрут проведения дополнительно фиксирует транзакцию до формирования успешного ответа. Отдельные repository/service-слои отсутствуют.
 
+## Ручной запуск на Windows без Make
+
+Нужны Docker Desktop (Linux containers) и PowerShell. Из корня репозитория:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_manual_images.ps1
+docker compose -f compose.manual.yaml up -d --no-build --wait
+```
+
+После успешной сборки и запуска откройте http://localhost:5180.
+PostgreSQL, миграции, API и UI работают в Docker. Данные сохраняются после
+остановки. Команды остановки, обновления и диагностики — в
+[краткой инструкции](docs/DOCKER_WINDOWS.md).
+
 ## Быстрая проверка на Windows или Linux
 
 Нужны Python и Docker с Linux-контейнерами. GNU Make, Node.js и зависимости тестов устанавливаются внутри отдельного образа:
