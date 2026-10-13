@@ -42,8 +42,8 @@ def test_report_period_filters_totals_and_csv(authenticated_client: tuple[TestCl
     export = client.get(url.replace("/supplies?", "/supplies/export?"))
     assert export.status_code == 200
     rows = list(csv.DictReader(StringIO(export.text.removeprefix("\ufeff"))))
-    assert [row["document_number"] for row in rows] == ["FROM", "INSIDE"]
-    assert [row["quantity"] for row in rows] == ["0.100", "0.200"]
+    assert [row["Номер документа"] for row in rows] == ["FROM", "INSIDE"]
+    assert [row["Количество"] for row in rows] == ["0.100", "0.200"]
 
 
 def test_report_requires_valid_aware_forward_period(authenticated_client: tuple[TestClient, dict[str, str]]) -> None:

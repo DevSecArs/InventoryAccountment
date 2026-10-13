@@ -150,6 +150,11 @@ CSV_FIELDS = [
     "receipt_id", "document_number", "received_at", "supplier_id", "supplier_name", "material_id",
     "material_sku", "material_name", "unit_id", "unit_code", "unit_name", "quantity",
 ]
+CSV_HEADERS = [
+    "ID поступления", "Номер документа", "Дата поступления", "ID поставщика", "Поставщик",
+    "ID материала", "Артикул материала", "Материал", "ID единицы измерения",
+    "Код единицы измерения", "Единица измерения", "Количество",
+]
 
 
 def _safe_csv(value: object) -> str:
@@ -159,11 +164,11 @@ def _safe_csv(value: object) -> str:
 
 def render_csv(rows: list[dict[str, object]]) -> str:
     buffer = StringIO(newline="")
-    writer = csv.DictWriter(buffer, fieldnames=CSV_FIELDS, lineterminator="\r\n")
-    writer.writeheader()
+    writer = csv.writer(buffer, lineterminator="\r\n")
+    writer.writerow(CSV_HEADERS)
     for row in rows:
         rendered = {key: _safe_csv(row[key]) for key in CSV_FIELDS}
         rendered["quantity"] = format(row["quantity"], "f")
         rendered["received_at"] = row["received_at"].isoformat()  # type: ignore[union-attr]
-        writer.writerow(rendered)
+        writer.writerow([rendered[key] for key in CSV_FIELDS])
     return "\ufeff" + buffer.getvalue()

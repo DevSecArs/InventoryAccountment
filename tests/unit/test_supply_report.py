@@ -7,7 +7,7 @@ import csv
 
 import pytest
 
-from app.entities.supply_report import CSV_FIELDS, render_csv, validate_period
+from app.entities.supply_report import CSV_HEADERS, render_csv, validate_period
 
 
 def _row(**overrides: object) -> dict[str, object]:
@@ -47,21 +47,21 @@ def test_csv_uses_bom_rfc_csv_and_exact_decimal_values() -> None:
 
     assert rendered.startswith("\ufeff")
     rows = list(csv.DictReader(StringIO(rendered.removeprefix("\ufeff"))))
-    assert list(rows[0]) == CSV_FIELDS
+    assert list(rows[0]) == CSV_HEADERS
     assert rows == [
         {
-            "receipt_id": "receipt-1",
-            "document_number": "'=formula",
-            "received_at": "2026-01-01T09:30:00+00:00",
-            "supplier_id": "supplier-1",
-            "supplier_name": 'Поставщик, "А"\nНовый',
-            "material_id": "material-1",
-            "material_sku": "MAT-1",
-            "material_name": "Материал",
-            "unit_id": "unit-1",
-            "unit_code": "KG",
-            "unit_name": "Килограмм",
-            "quantity": "0.100",
+            "ID поступления": "receipt-1",
+            "Номер документа": "'=formula",
+            "Дата поступления": "2026-01-01T09:30:00+00:00",
+            "ID поставщика": "supplier-1",
+            "Поставщик": 'Поставщик, "А"\nНовый',
+            "ID материала": "material-1",
+            "Артикул материала": "MAT-1",
+            "Материал": "Материал",
+            "ID единицы измерения": "unit-1",
+            "Код единицы измерения": "KG",
+            "Единица измерения": "Килограмм",
+            "Количество": "0.100",
         }
     ]
 
