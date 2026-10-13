@@ -47,6 +47,28 @@ describe('ReportsPage', () => {
     expect(screen.getAllByText(/0\.100 KG/)).not.toHaveLength(0);
     expect(screen.getByText('Всего строк: 1')).toBeInTheDocument();
   });
+
+  it('сохраняет даты периода при изменении фильтров', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', vi.fn((input: string) => Promise.resolve(new Response(JSON.stringify(
+      String(input).includes('/suppliers/')
+        ? { items: [{ id: 's1', name: 'Поставщик' }], total: 1, skip: 0, limit: 1000 }
+        : { items: [], total: 0, skip: 0, limit: 50, totals: [] },
+    ), { status: 200 }))));
+    renderPage('/reports?from=2026-01-01T00%3A00%3A00.000Z&to=2026-01-02T00%3A00%3A00.000Z');
+
+    const from = screen.getByLabelText('Начало периода') as HTMLInputElement;
+    const to = screen.getByLabelText('Конец периода') as HTMLInputElement;
+    const initialFrom = from.value;
+    const initialTo = to.value;
+    expect(initialFrom).not.toBe('');
+    expect(initialTo).not.toBe('');
+
+    await screen.findByRole('option', { name: 'Поставщик' });
+    await user.selectOptions(screen.getByLabelText('Поставщик'), 's1');
+    expect(from.value).toBe(initialFrom);
+    expect(to.value).toBe(initialTo);
+  });
 });
 
 
