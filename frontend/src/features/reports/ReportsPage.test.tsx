@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -18,7 +19,10 @@ function renderPage(entry: string) {
   );
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('ReportsPage', () => {
   it('не запрашивает отчёт, пока период не выбран', async () => {
@@ -43,4 +47,37 @@ describe('ReportsPage', () => {
     expect(screen.getAllByText(/0\.100 KG/)).not.toHaveLength(0);
     expect(screen.getByText('Всего строк: 1')).toBeInTheDocument();
   });
+});
+
+
+it('показывает ошибку экспорта CSV и сохраняет возможность повторного скачивания', async () => {
+  const user = userEvent.setup();
+  const fetchMock = vi.fn((input: string) => {
+    const url = String(input);
+    if (url.includes('/reports/supplies/export?')) {
+      return Promise.resolve(new Response(JSON.stringify({
+        code: 'export_unavailable',
+        message: 'Экспорт временно недоступен',
+        request_id: 'export-request-id',
+      }), { status: 503 }));
+    }
+    return Promise.resolve(new Response(JSON.stringify({
+      items: [], total: 0, skip: 0, limit: 50, totals: [],
+    }), { status: 200 }));
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  renderPage('/reports?from=2026-01-01T00%3A00%3A00.000Z&to=2026-01-02T00%3A00%3A00.000Z');
+
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  const download = screen.getByRole('button', { name: /Скачать CSV/ });
+  await user.click(download);
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Экспорт временно недоступен');
+  expect(screen.getByRole('alert')).toHaveTextContent('export-request-id');
+  expect(download).toBeEnabled();
+  await user.click(download);
+  await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) =>
+    String(url).includes('/reports/supplies/export?'),
+  )).toHaveLength(2));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Экспорт временно недоступен');
 });
