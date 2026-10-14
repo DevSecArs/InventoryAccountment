@@ -173,6 +173,8 @@ test:
 
 test-in-container:
 	@$(MAKE) check-docker-environment DOCKER=1
+	@echo '==> Backend: собираю актуальный test-образ'
+	@$(COMPOSE) build --progress=plain app
 	@echo '==> Backend: применяю миграции к тестовой БД'
 	@$(COMPOSE) run --rm --user root app alembic upgrade head
 	@echo '==> Backend: запускаю pytest и проверку покрытия'
