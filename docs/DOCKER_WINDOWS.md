@@ -7,10 +7,16 @@ Python, Node.js, pnpm и Make на Windows устанавливать не тр�
 
 ## Первый запуск
 
+Если ENV_FILE уже задан в окружении, команды используют его. Чтобы выбрать
+файл интерактивно, сначала выполните `$env:ENV_FILE = Read-Host 'Путь к файлу настроек'`.
+При смене ENV_FILE пересоздайте массив composeOptions в текущей сессии.
+
 Введите в PowerShell:
 
 ```powershell
-docker compose up -d --build --wait
+$composeOptions = @()
+if ($env:ENV_FILE) { $composeOptions = @('--env-file', $env:ENV_FILE) }
+docker compose @composeOptions up -d --build --wait
 ```
 
 Compose собирает образы из корня проекта; .dockerignore исключает локальные
@@ -28,8 +34,8 @@ Vite dev-сервер и прокси к API. Этот файл не предн�
 ## Остановка и повторный запуск
 
 ```powershell
-docker compose down
-docker compose up -d --no-build --wait
+docker compose @composeOptions down
+docker compose @composeOptions up -d --no-build --wait
 ```
 
 Данные и созданный пользователь сохраняются в Docker-томе inventory_data
@@ -45,8 +51,8 @@ docker compose up -d --no-build --wait
 ## Диагностика
 
 ```powershell
-docker compose ps -a
-docker compose logs --tail 100 migrate app frontend db
+docker compose @composeOptions ps -a
+docker compose @composeOptions logs --tail 100 migrate app frontend db
 ```
 
 migrate со статусом Exited (0) — нормальное успешное завершение миграций.
@@ -55,15 +61,20 @@ migrate со статусом Exited (0) — нормальное успешно
 ```powershell
 $env:APP_PORT = '8011'
 $env:FRONTEND_PORT = '5181'
-docker compose up -d --no-build --wait
+docker compose @composeOptions up -d --no-build --wait
 ```
 
 Для полного сброса **только этого локального стенда**, когда его данные
 больше не нужны, остановите его с удалением тома:
 
 ```powershell
-docker compose down --volumes
+docker compose @composeOptions down --volumes
 ```
 
 Автоматические тесты запускаются отдельно по [UNIX_TESTS.md](UNIX_TESTS.md).
 Ручной запуск не заменяет make verify и независимую приёмку.
+
+Внешние настройки задаются через ENV_FILE: [правила передачи и изоляция тестов](../GUIDE.md#внешний-файл-настроек).
+Make и deploy учитывают переменную автоматически. В прямых рабочих командах
+Compose добавляйте `--env-file "$ENV_FILE"` (Linux) или
+`--env-file "$env:ENV_FILE"` (PowerShell), если переменная задана.

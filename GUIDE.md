@@ -4,6 +4,61 @@
 команд на Linux; [Windows запускает те же сервисы напрямую](docs/DOCKER_WINDOWS.md).
 Флаги DOCKER, LOCAL и TEST удалены и отклоняются с ошибкой.
 
+## Внешний файл настроек
+
+Путь задаётся снаружи через ENV_FILE; фактический путь и содержимое не сохраняйте
+в репозитории. Файл имеет формат Docker Compose env, пример ключей — .env.example.
+Используйте абсолютный путь: deploy меняет текущий каталог на корень проекта.
+
+В Linux передайте путь интерактивно и экспортируйте переменную:
+
+```bash
+read -r -p 'Путь к файлу настроек: ' ENV_FILE
+export ENV_FILE
+make setup
+make run
+```
+
+Все рабочие Make-команды (setup/run/up/down/status/migrate/backup/restore) и
+обе команды deploy/deploy.sh читают ENV_FILE через общий scripts/compose.sh.
+Путь с пробелами передаётся одним аргументом; файл не выполняется как shell-код.
+При непустом ENV_FILE отсутствующий/недоступный файл вызывает отказ без fallback.
+При незаданном или пустом ENV_FILE остаётся обычное поведение Compose: корневой
+.env и значения по умолчанию. Переменные окружения имеют приоритет над файлом.
+Не задавайте конкурирующий COMPOSE_ENV_FILES; используйте один способ настройки.
+
+Прямой docker compose не читает ENV_FILE автоматически. В Linux:
+
+```bash
+docker compose --env-file "$ENV_FILE" up -d --build --wait
+docker compose --env-file "$ENV_FILE" ps -a
+```
+
+В PowerShell:
+
+```powershell
+$env:ENV_FILE = Read-Host 'Путь к файлу настроек'
+docker compose --env-file "$env:ENV_FILE" up -d --build --wait
+docker compose --env-file "$env:ENV_FILE" ps -a
+```
+
+Передавайте тот же --env-file каждой прямой рабочей команде, включая down,
+logs, build, run migrate и run pg-tools. Если внешний файл не используется,
+опустите параметр целиком; не передавайте --env-file с пустым значением.
+Для проверки используйте config --quiet: обычный config раскрывает значения.
+Сам внешний файл не монтируется в контейнеры и не попадает в образ; Compose
+передаёт только перечисленные в environment настройки сервисов. Внешняя БД
+по-прежнему не поддерживается. Изменение POSTGRES_PASSWORD в файле не меняет
+пароль существующей роли в уже созданном томе PostgreSQL.
+
+Тестовые команды (test, quality, verify, lock-check, mutation, migration-check,
+backup-restore-check, container-smoke, test-clean и их служебные цели) игнорируют
+ENV_FILE. TEST_COMPOSE явно использует пустой compose.test.env, исключая
+автозагрузку рабочего .env. Тестовые реквизиты остаются фиксированными;
+TEST_API_PORT/TEST_FRONTEND_PORT задаются отдельно через окружение.
+Прямые тестовые команды также должны передавать --env-file compose.test.env,
+включая отдельный Linux test-runner. Docker build/run не читают ENV_FILE.
+
 | Команда | Действие |
 | --- | --- |
 | make setup | Проверить Docker/Compose и собрать API/UI |
@@ -26,7 +81,7 @@
 PROJECT_NAME меняет его имя. Проверки используют отдельный проект
 inventory-check-<TEST_RUN_ID>, compose.test.yaml и фиксированные обезличенные
 реквизиты inventory_test. Тестовая конфигурация не берёт пароль и DATABASE_URL
-из рабочего .env. PROJECT_NAME и TEST_PROJECT не должны совпадать.
+из рабочего .env или ENV_FILE. PROJECT_NAME и TEST_PROJECT не должны совпадать.
 
 Пример полного прогона из Unix shell:
 
@@ -42,7 +97,8 @@ BASE_REF должен существовать в Git. Verify останавли
 8001/5174). Запуск одного и того же проекта параллельно не поддерживается.
 
 Рабочие APP_PORT/FRONTEND_PORT по умолчанию 8010/5180; PostgreSQL не публикует
-порт на хост. .env необязателен: для настройки скопируйте .env.example.
+порт на хост. Настройки необязательны: ENV_FILE или локальный .env
+используют ключи .env.example.
 Внешняя DATABASE_URL в Compose не принимается. Пароль нельзя менять только в
 .env после создания тома: POSTGRES_* инициализируют новую БД, существующие
 роли PostgreSQL автоматически не изменяются.

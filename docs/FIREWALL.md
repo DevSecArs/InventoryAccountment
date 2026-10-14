@@ -28,3 +28,8 @@ docker compose -f docker-compose.yaml logs --tail 100 db migrate app frontend
 
 Разделение Compose-проектов не заменяет полноценную изоляцию Docker Engine.
 Не передавайте рабочие секреты или внешний Docker socket непроверенным тестам.
+
+Внешние настройки задаются через ENV_FILE: [правила передачи и изоляция тестов](../GUIDE.md#внешний-файл-настроек).
+Make и deploy учитывают переменную автоматически. В прямых рабочих командах
+Compose добавляйте `--env-file "$ENV_FILE"` (Linux) или
+`--env-file "$env:ENV_FILE"` (PowerShell), если переменная задана.

@@ -24,3 +24,8 @@ make test проверяет Backend и Frontend, make quality — формат/
 и audit, make verify — полный контур. Тесты не используют рабочую БД.
 Отдельный Linux test-образ дополнительно выполняет production-сборку UI.
 Сквозные браузерные тесты и frontend coverage пока не настроены.
+
+Внешние настройки задаются через ENV_FILE: [правила передачи и изоляция тестов](../GUIDE.md#внешний-файл-настроек).
+Make и deploy учитывают переменную автоматически. В прямых рабочих командах
+Compose добавляйте `--env-file "$ENV_FILE"` (Linux) или
+`--env-file "$env:ENV_FILE"` (PowerShell), если переменная задана.

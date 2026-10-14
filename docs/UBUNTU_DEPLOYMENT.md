@@ -13,11 +13,11 @@ make status
 Без Make:
 
 ~~~bash
-docker compose -f docker-compose.yaml up --build -d --wait
-docker compose -f docker-compose.yaml ps -a
+sh scripts/compose.sh -f docker-compose.yaml up --build -d --wait
+sh scripts/compose.sh -f docker-compose.yaml ps -a
 ~~~
 
-Настройки берутся из корневого .env или примеров по умолчанию. Не задавайте
+Настройки берутся из ENV_FILE, а без него — из корневого .env или значений по умолчанию. Не задавайте
 DATABASE_URL внешнего сервера: Compose передаёт адрес db и POSTGRES_*.
 БД не имеет опубликованного порта; UI/API доступны только через loopback.
 Для удалённого production-доступа требуется отдельная задача TLS/reverse proxy
@@ -26,7 +26,7 @@ DATABASE_URL внешнего сервера: Compose передаёт адре�
 Миграции выполняются сервисом migrate до API. При ошибке смотрите:
 
 ~~~bash
-docker compose -f docker-compose.yaml logs --tail 100 migrate app db
+sh scripts/compose.sh -f docker-compose.yaml logs --tail 100 migrate app db
 ~~~
 
 Остановка make down сохраняет том. Перед обновлением ценных данных выполните
@@ -40,3 +40,8 @@ downgrade и удаление тома автоматически не выпо�
 
 Приёмка: make verify, успешный CI, независимое одобрение и живая демонстрация.
 [Команды и ограничения](../GUIDE.md).
+
+Внешние настройки задаются через ENV_FILE: [правила передачи и изоляция тестов](../GUIDE.md#внешний-файл-настроек).
+Make и deploy учитывают переменную автоматически. В прямых рабочих командах
+Compose добавляйте `--env-file "$ENV_FILE"` (Linux) или
+`--env-file "$env:ENV_FILE"` (PowerShell), если переменная задана.

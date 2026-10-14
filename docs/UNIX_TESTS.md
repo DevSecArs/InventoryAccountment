@@ -8,8 +8,8 @@ Desktop в режиме Linux-контейнеров; Make и node_modules на 
 
 ~~~powershell
 python scripts/build_test_image.py
-docker compose -p inventory-tests-local -f compose.test-runner.yaml run --rm tests
-docker compose -p inventory-tests-local -f compose.test-runner.yaml down --volumes
+docker compose --env-file compose.test.env -p inventory-tests-local -f compose.test-runner.yaml run --rm tests
+docker compose --env-file compose.test.env -p inventory-tests-local -f compose.test-runner.yaml down --volumes
 
 ~~~
 
@@ -60,3 +60,6 @@ compose.test-runner.yaml, scripts/build_test_image.py, scripts/test-runner.mk
 и регрессионные тесты. Изменений схемы этот контур не требует.
 Откат — возврат предыдущих исходников и пересборка тестового образа;
 удаление тестового проекта не меняет рабочую БД.
+
+ENV_FILE рабочего приложения здесь не используется. Пустой compose.test.env
+исключает загрузку рабочего .env; реквизиты тестовой БД фиксированы в Compose.
