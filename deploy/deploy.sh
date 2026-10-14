@@ -4,7 +4,7 @@ set -eu
 repo_root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$repo_root"
 case "${1:-}" in
-    --validate-only) docker compose -f docker-compose.yaml config --quiet ;;
-    "") docker compose -f docker-compose.yaml up --build --detach --wait ;;
+    --validate-only) sh scripts/compose.sh -f docker-compose.yaml config --quiet ;;
+    "") sh scripts/compose.sh -f docker-compose.yaml up --build --detach --wait ;;
     *) echo "Использование: deploy/deploy.sh [--validate-only]" >&2; exit 2 ;;
 esac
