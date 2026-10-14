@@ -33,7 +33,7 @@ Setup проверяет версии/доступность инструмен�
 | make up | Запускает docker-compose.yaml с системным env-файлом |
 | make migrate | Alembic upgrade head через uv, использует DATABASE_URL |
 | make migrate DOCKER=1 | Alembic в тестовом контейнере app |
-| make test | Всегда дочерний test-in-container DOCKER=1: миграции и pytest, затем сборка frontend-test и Vitest; сводки pytest/Vitest выводятся по-русски |
+| make test | Всегда дочерний test-in-container DOCKER=1: миграции и pytest, затем сборка frontend-test и Vitest; сводки тестов и прогресс установки pnpm поясняются по-русски |
 | make quality DOCKER=1 | Ruff format/check, mypy, Bandit, Python audit; Frontend quality/audit и gitleaks |
 | make mutation DOCKER=1 | Контролируемые мутации; timeout/ошибка подготовки не считаются успехом |
 | make migration-check DOCKER=1 | Чистая и заполненная временные БД, upgrade/downgrade, сравнение metadata |
@@ -44,6 +44,11 @@ Setup проверяет версии/доступность инструмен�
 | make down | Останавливает локальные фоновые процессы и обычный Compose; его тома сохраняет |
 
 Make test пересобирает Backend-образ перед миграциями и тестами, чтобы запуск использовал актуальные исходники и скрипты локализации. Отдельный Linux test-образ пересобирайте командой из [инструкции](docs/UNIX_TESTS.md) после изменения исходников или тестов.
+
+В выводе установки pnpm счётчики поясняют число обработанных, взятых из кэша,
+скачанных и добавленных пакетов; сетевые предупреждения сохраняют адрес и код,
+указывая задержку и число оставшихся повторов. Сообщения Make о входе в каталог
+подавлены: вместо них используются заголовки этапов Backend и Frontend.
 
 Make status возвращает успех уже при наличии работающего контейнера; это не полная readiness-проверка. Если контейнеров нет, проверяет HTTP Backend и Frontend на локальных портах APP_PORT/FRONTEND_PORT, по умолчанию 8000/5173.
 

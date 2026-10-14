@@ -61,7 +61,7 @@ FROM frontend-base AS frontend-test
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 COPY frontend ./
 COPY scripts/localize_test_output.mjs /scripts/localize_test_output.mjs
-CMD ["sh", "-lc", "pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && node /scripts/localize_test_output.mjs -- pnpm test:run"]
+CMD ["sh", "-lc", "node /scripts/localize_test_output.mjs -- pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && node /scripts/localize_test_output.mjs -- pnpm test:run"]
 
 FROM builder AS test-builder
 
