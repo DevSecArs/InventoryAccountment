@@ -1,8 +1,9 @@
 # Проверки GitHub
 
 [Workflow verify.yml](workflows/verify.yml) запускается на push и pull_request.
-Ubuntu 24.04, Python 3.11 и Node.js 24; checkout получает полную историю.
-Последовательно выполняются make setup DOCKER=1 и make verify DOCKER=1.
+Ubuntu 24.04 с Docker/Compose и Make; checkout получает полную историю.
+Python и Node.js используются внутри образов.
+Последовательно выполняются make setup и make verify.
 Каталог reports/ сохраняется через upload-artifact с if: always().
 Это описание конфигурации, а не подтверждение успешного CI. CD отсутствует.
 
@@ -16,8 +17,6 @@ backup/restore, скрипты проверок, конфигурации кач
 одобрение CODEOWNERS, сброс одобрений после изменений и разрешение обсуждений.
 Настройки GitHub не хранятся в этом файле; их фактическое включение не проверено.
 
-Ограничение текущего Makefile: container-smoke передаёт сканеру фиксированный
-тег inventory-accountment-local-ubuntu-verify-app:latest. Проверку совпадения
-просканированного и запущенного image ID нельзя считать обеспеченной.
-Отдельный [Linux test-образ](../docs/UNIX_TESTS.md) выполняет тесты и миграции,
-но не заменяет workflow и полный verify.
+container-smoke получает image ID запущенного контейнера для Trivy.
+verify очищает тестовый проект и не запускает рабочее приложение.
+Отдельный [Linux test-образ](../docs/UNIX_TESTS.md) не заменяет полный verify.
