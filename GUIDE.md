@@ -1,107 +1,62 @@
-# Команды разработки и проверок
+# Команды приложения и проверок
 
-Сверено с Makefile и scripts/test-runner.mk ревизии 9701e9d. Команды Make выполняются в Unix shell; наличие Docker Desktop не устанавливает GNU Make в Windows.
+Весь стек работает в Docker Compose. GNU Make нужен только как интерфейс
+команд на Linux; [Windows запускает те же сервисы напрямую](docs/DOCKER_WINDOWS.md).
+Флаги DOCKER, LOCAL и TEST удалены и отклоняются с ошибкой.
 
-## Два тестовых контура
-
-| Контур | Запуск | Назначение |
-| --- | --- | --- |
-| Отдельный Linux test-образ | python scripts/build_test_image.py; Compose из [инструкции](docs/UNIX_TESTS.md) | Backend, Frontend, сборка UI и миграции; без Make/Node на хосте |
-| Основной Make/CI | make verify DOCKER=1 | Полный обязательный контур, включая качество и безопасность |
-
-Linux test-образ не управляет Docker с помощью socket и не выполняет полный verify. Не считать результаты этих контуров взаимозаменяемыми.
-
-## Подготовка Make-окружения
-
-Нужны Git, GNU Make, Python 3.11+, Node.js 24, pnpm 11.19.0 и Docker Compose. Make setup вызывает scripts/ensure_docker.sh: на поддерживаемой Ubuntu скрипт может устанавливать Docker и менять членство в группе docker. Это изменяет систему; после добавления в группу нужен новый сеанс.
-
-~~~bash
-make setup DOCKER=1
-make up DOCKER=1 DOCKER_RUN_ID=local-check
-make migrate DOCKER=1 DOCKER_RUN_ID=local-check
-
-~~~
-
-Setup проверяет версии/доступность инструментов, наличие файла конфигурации, устанавливает uv 0.5.29, затем выполняет uv sync --frozen --extra dev и pnpm install --frozen-lockfile. Он не создаёт рабочий файл настроек. Использовать .env.example только для тестового режима; обычный режим ожидает /etc/InventoryAccountment/InventoryAccountment.env.
-
-## Основные команды
-
-| Команда | Фактическое поведение |
+| Команда | Действие |
 | --- | --- |
-| make run | Фоновые Uvicorn и Vite на 0.0.0.0; PID/логи в reports/runtime; отдельная БД должна быть доступна |
-| make run DOCKER=1 / make up DOCKER=1 | Собирает и запускает тестовый Compose, ожидает healthcheck |
-| make up | Запускает docker-compose.yaml с системным env-файлом |
-| make migrate | Alembic upgrade head через uv, использует DATABASE_URL |
-| make migrate DOCKER=1 | Alembic в тестовом контейнере app |
-| make test | Всегда дочерний test-in-container DOCKER=1: миграции и pytest, затем сборка frontend-test и Vitest; сводки тестов и прогресс установки pnpm поясняются по-русски |
-| make quality DOCKER=1 | Ruff format/check, mypy, Bandit, Python audit; Frontend quality/audit и gitleaks |
-| make mutation DOCKER=1 | Контролируемые мутации; timeout/ошибка подготовки не считаются успехом |
-| make migration-check DOCKER=1 | Чистая и заполненная временные БД, upgrade/downgrade, сравнение metadata |
-| make backup / make restore | pg-tools выбранного Compose-проекта, а не произвольная внешняя DATABASE_URL |
-| make backup-restore-check DOCKER=1 | Повреждение и восстановление только временных тестовых БД |
-| make status DOCKER=1 | Состояние/последние 50 строк логов выбранного Compose-проекта |
-| make down DOCKER=1 | Удаляет контейнеры, сеть и тома выбранного тестового проекта |
-| make down | Останавливает локальные фоновые процессы и обычный Compose; его тома сохраняет |
+| make setup | Проверить Docker/Compose и собрать API/UI |
+| make run / make up | Собрать и запустить PostgreSQL → Alembic → API → Frontend, дождаться готовности |
+| make status | Статусы контейнеров и последние 50 строк логов |
+| make down | Остановить приложение, сохранив том БД |
+| make migrate | Применить Alembic в сервисе migrate к контейнерной БД |
+| make backup | Дамп БД сервиса db в backups/ с метаданными и checksum |
+| make restore BACKUP=backups/имя.dump | Восстановить дамп в отдельную БД того же контейнера |
+| make test | Собрать тестовый Backend, применить миграции, pytest с покрытием и Frontend Vitest |
+| make quality | Ruff, mypy, Bandit, Python audit, Frontend format/lint/typecheck/audit, gitleaks |
+| make migration-check | Новая и заполненная временные БД, upgrade/downgrade и metadata |
+| make mutation | Проверить обнаружение мутаций критических правил |
+| make backup-restore-check | Реальное восстановление в отдельную тестовую БД и сверка данных |
+| make container-smoke | HTTP smoke и сканирование фактически запущенного image ID |
+| make verify | Полный обязательный контур и очистка тестового проекта |
+| make test-clean | Удалить контейнеры и тома только тестового проекта |
 
-Make test пересобирает Backend-образ перед миграциями и тестами, чтобы запуск использовал актуальные исходники и скрипты локализации. Отдельный Linux test-образ пересобирайте командой из [инструкции](docs/UNIX_TESTS.md) после изменения исходников или тестов.
+Рабочий проект по умолчанию inventory-compose, том inventory_data.
+PROJECT_NAME меняет его имя. Проверки используют отдельный проект
+inventory-check-<TEST_RUN_ID>, compose.test.yaml и фиксированные обезличенные
+реквизиты inventory_test. Тестовая конфигурация не берёт пароль и DATABASE_URL
+из рабочего .env. PROJECT_NAME и TEST_PROJECT не должны совпадать.
 
-В выводе установки pnpm счётчики поясняют число обработанных, взятых из кэша,
-скачанных и добавленных пакетов; сетевые предупреждения сохраняют адрес и код,
-указывая задержку и число оставшихся повторов. Сообщения Make о входе в каталог
-подавлены: вместо них используются заголовки этапов Backend и Frontend.
-
-Этап SAST начинается отдельным сообщением и после Bandit печатает блок с типом
-анализа, числом найденных уязвимостей уровня High либо отметкой «всё чисто» и
-путём к JSON-отчёту. При находках команда сохраняет ненулевой статус Bandit.
-
-Make status возвращает успех уже при наличии работающего контейнера; это не полная readiness-проверка. Если контейнеров нет, проверяет HTTP Backend и Frontend на локальных портах APP_PORT/FRONTEND_PORT, по умолчанию 8000/5173.
-
-LOCAL и TEST как Make-параметры отклоняются. Для разных запусков задавайте уникальный DOCKER_RUN_ID и используйте его во всех командах. Порты тестового Make-контура — 8001/5174; при параллельной публикации портов одного ID недостаточно, нужны также разные порты. Отдельный test-runner порты не публикует.
-
-## Полный verify
+Пример полного прогона из Unix shell:
 
 ~~~bash
-make verify DOCKER=1 DOCKER_RUN_ID=local-check BASE_REF=origin/main
-
+make setup
+make verify TEST_RUN_ID=local-check BASE_REF=origin/main
 ~~~
 
-BASE_REF должен разрешаться в Git; выберите существующую базовую ветку проекта. Проверки выполняются последовательно:
+BASE_REF должен существовать в Git. Verify останавливается при первом отказе,
+сохраняет ненулевой код и очищает тестовый проект через trap. Рабочее приложение
+не запускается и не останавливается. Кэш pnpm сохраняется. Одновременные
+проверки требуют разных ID и TEST_API_PORT/TEST_FRONTEND_PORT (по умолчанию
+8001/5174). Запуск одного и того же проекта параллельно не поддерживается.
 
-1. lock-check: uv.lock и pnpm-lock.yaml.
-2. quality: формат, Ruff, mypy, Bandit, аудит зависимостей и gitleaks.
-3. test: Backend с покрытием 80% и Frontend Vitest (его порог coverage не задан).
-4. mutation, migration-check и backup-restore-check.
-5. container-smoke, проверка очистки проекта, whitespace рабочей и веточной разницы.
+Рабочие APP_PORT/FRONTEND_PORT по умолчанию 8010/5180; PostgreSQL не публикует
+порт на хост. .env необязателен: для настройки скопируйте .env.example.
+Внешняя DATABASE_URL в Compose не принимается. Пароль нельзя менять только в
+.env после создания тома: POSTGRES_* инициализируют новую БД, существующие
+роли PostgreSQL автоматически не изменяются.
 
-Внутри container-smoke после up вызывается Trivy, затем миграции и HTTP smoke. Сейчас имя образа для Trivy жёстко задано: inventory-accountment-local-ubuntu-verify-app:latest. Совпадение с образом конкретного прогона не гарантировано; это незавершённое требование приёмки, а не разрешённое исключение.
+Restore по умолчанию не перезаписывает источник. Замена существующей отдельной
+цели требует RESTORE_EXISTING=1, TARGET_DATABASE, TARGET_DATABASE_URL и
+совпадающего CONFIRM_TARGET_DATABASE. Проверяйте точную цель до выполнения.
+Все pg-tools операции идут в сервис db данного Compose-проекта.
 
-При первой ошибке verify прекращается, trap очищает тестовый Compose-проект. Внешний том pnpm inventory-accountment-pnpm-store сохраняется. После успешных проверок verify вызывает make up с переданным DOCKER: с DOCKER=1 тестовый контур снова запускается. Уберите его после проверки вручную:
+Отчёты: reports/junit.xml, coverage.xml, htmlcov/, bandit.json, pip-audit.json,
+pnpm-audit.json, gitleaks.json, trivy-image.json по мере прохождения этапов.
+Linux test-runner сохраняет свои отчёты в reports/unix-tests/.
+Файл отчёта не подтверждает успех сам по себе; следующий прогон может заменить его.
 
-~~~bash
-make down DOCKER=1 DOCKER_RUN_ID=local-check
-
-~~~
-
-Не запускать verify без DOCKER=1, если последующий запуск обычного окружения не планируется.
-
-## Отчёты и диагностика
-
-Основной контур пишет reports/junit.xml, coverage.xml, htmlcov/, bandit.json, pip-audit.json, pnpm-audit.json, gitleaks.json, trivy-image.json по мере выполнения этапов. Наличие файла само по себе не доказывает успех или принадлежность актуальному коммиту. Последующий прогон может перезаписать его. Frontend JUnit в основном Make-контуре отдельно не настроен; в Linux test-runner он сохраняется.
-
-При сбое сохранить команду, exit code, SHA и логи; отдельно запускать независимые проверки для диагностики допустимо, но это не отменяет отказ verify. Не снижать пороги, не отключать задания. Не считать старый образ проверкой текущей рабочей копии.
-
-## Backup и restore
-
-~~~bash
-make backup DOCKER=1 DOCKER_RUN_ID=local-check
-make restore DOCKER=1 DOCKER_RUN_ID=local-check BACKUP=backups/имя.dump
-
-~~~
-
-Замените имя дампа существующим. Restore по умолчанию создаёт отдельную БД; перезапись требует RESTORE_EXISTING=1, TARGET_DATABASE_URL, TARGET_DATABASE и совпадающего CONFIRM_TARGET_DATABASE. До разрушительной операции проверить точную цель и разрешение. Не применять удаление тестовых томов к рабочему проекту.
-
-В обычном Compose pg-tools подключается к сервису db. Если приложение использует внешнюю DATABASE_URL, make backup не становится автоматически backup этой внешней БД. Для неё нужен отдельно согласованный план PostgreSQL backup/restore.
-
-## Приёмка
-
-Успешный verify не заменяет успешный CI актуального SHA, независимое одобрение, проверку критических файлов и живую демонстрацию. Последние сохранённые результаты и незавершённые проверки — в [TEST_DEFECTS.md](TEST_DEFECTS.md). В этой актуализации документации приложение и инфраструктура не запускались.
+Порог Backend — 80%; отключать проверки для успеха запрещено. CI и независимое
+одобрение актуального коммита остаются обязательными. Фактические результаты:
+[TEST_DEFECTS.md](TEST_DEFECTS.md).

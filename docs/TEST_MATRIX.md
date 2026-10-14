@@ -9,6 +9,7 @@
 | Валидация | Номер документа, позиции, количество и точность, нормализация | tests/unit/test_validation.py |
 | Пароли | Проверка пароля | tests/unit/test_password_verification.py |
 | Период и CSV | Границы периода, escaping, опасные начальные символы, пустой CSV | tests/unit/test_supply_report.py |
+| Конфигурация Compose | Кодирование пароля, сохранение рабочего тома, отдельный test-clean и отказ удалённого флага | tests/unit/test_compose_configuration.py |
 | Test-образ | Исключение локальных зависимостей и .env, сохранение исходников отчётов | tests/unit/test_build_context.py |
 | API, auth, справочники | Health/readiness, ошибки, CSRF, сессии, purge, CRUD, архивы, поиск и пагинация | tests/integration/test_api_catalogs.py |
 | Черновики | Создание/чтение/PATCH, ограничения, ссылки, rollback и запрет изменения нечерновика | tests/integration/test_receipts.py |
@@ -22,18 +23,17 @@
 
 ## Запуск
 
-- make test DOCKER=1 — Backend и Frontend через основной тестовый Compose.
-- make migration-check DOCKER=1 — миграции.
-- make backup-restore-check DOCKER=1 — реальное восстановление в тестовом контуре.
-- make mutation DOCKER=1 — мутационные проверки.
-- make quality DOCKER=1 — статические и security-проверки.
-- make container-smoke DOCKER=1 — контейнерный сценарий и Trivy.
-- make verify DOCKER=1 — обязательный полный контур.
+- make test — Backend и Frontend через основной тестовый Compose.
+- make migration-check — миграции.
+- make backup-restore-check — реальное восстановление в тестовом контуре.
+- make mutation — мутационные проверки.
+- make quality — статические и security-проверки.
+- make container-smoke — контейнерный сценарий и Trivy.
+- make verify — обязательный полный контур.
 - [Отдельный Linux-образ](UNIX_TESTS.md) — Backend, Frontend, сборка и миграции.
 
 Команды требуют подготовленного окружения и отдельных тестовых ресурсов.
-container-smoke пока использует фиксированный тег для сканирования:
-совпадение image ID остаётся незавершённым требованием.
+container-smoke получает image ID непосредственно из запущенного контейнера.
 
 ## Неполнота покрытия
 

@@ -12,36 +12,15 @@ React/TypeScript, Vite, React Router, TanStack Query, React Hook Form/Zod для
 
 Многопозиционная форма и редактирование сохранённого поступления в UI отсутствуют, хотя API их поддерживает. Выбор справочников ограничен первым запросом limit=1000. История ещё не различает загрузку/ошибку и пустой результат; после проведения обновляется только кэш списка поступлений. Полная матрица ролей и новых экранов тестами не подтверждена. Оставшиеся требования — в [ТЗ UI](../docs/WEB_UI_CODEX_SPEC.md).
 
-## Запуск
+## Запуск и проверки
 
-Проверенный контейнерный стек использует Node.js 24.21.0 и pnpm 11.19.0. На хосте используйте совместимый Node.js 24 и закреплённый pnpm. Не используйте один node_modules попеременно из Windows и Linux.
+Frontend запускается вместе с API и PostgreSQL через make up или Docker Compose.
+[Windows без Make](../docs/DOCKER_WINDOWS.md), [все команды](../GUIDE.md).
+Node.js 24.21.0 и pnpm 11.19.0 установлены внутри образа; на хосте не нужны.
+Адрес UI — http://localhost:5180, прокси /api и /health идёт на app:8000.
+Не помещайте секреты в VITE_*: значения доступны браузеру.
 
-Из каталога frontend:
-
-~~~text
-npm install --global pnpm@11.19.0
-pnpm install --frozen-lockfile
-pnpm dev
-~~~
-
-Vite слушает 0.0.0.0:5173. По умолчанию /api и /health проксируются на http://127.0.0.1:8000. VITE_API_PROXY_TARGET меняет адрес Backend для Vite dev/preview; VITE_API_BASE_URL задаёт URL в браузерном API-клиенте (по умолчанию same-origin). Настройки Vite загружаются через loadEnv для текущего mode.
-
-Создавайте локальную конфигурацию из frontend/.env.example при необходимости. Переменные VITE_* не должны содержать секретов. Для другого origin нужны соответствующие серверные настройки CORS/cookie; готовый CORS-контур в приложении не настроен.
-
-В APP_ENV=production cookie сессии имеет Secure; простой HTTP на удалённом IP не является рабочим вариантом браузерной авторизации. Для production нужен HTTPS. Тестовый APP_ENV=test предназначен только для изолированного окружения.
-
-## Проверки
-
-~~~text
-pnpm test:run
-pnpm quality
-pnpm build
-~~~
-
-Quality — Prettier, ESLint и TypeScript, без запуска тестов. Build выполняет tsc и Vite, результат — dist/. Текущие 7 тестов проверяют API-клиент, CatalogLayout и две ситуации страницы отчётов. Playwright, браузерные E2E и Frontend coverage-порог не настроены.
-
-На Windows без исправного локального Node-окружения используйте [отдельный Linux test-образ](../docs/UNIX_TESTS.md): он запускает тесты, сборку и сохраняет Frontend JUnit. Последние сохранённые результаты — [TEST_DEFECTS.md](../TEST_DEFECTS.md), не подтверждение нового прогона.
-
-## Развёртывание
-
-Dockerfile stage frontend запускает dev-сервер Vite. Deploy-скрипт использует vite preview на 4173 после сборки. Ни один вариант не означает настроенный production Nginx/TLS. Для публичной публикации нужны отдельная задача, HTTPS, корректная раздача dist и proxy к API.
+make test проверяет Backend и Frontend, make quality — формат/lint/typecheck
+и audit, make verify — полный контур. Тесты не используют рабочую БД.
+Отдельный Linux test-образ дополнительно выполняет production-сборку UI.
+Сквозные браузерные тесты и frontend coverage пока не настроены.
