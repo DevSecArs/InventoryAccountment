@@ -5,8 +5,11 @@ MAKEFLAGS += --no-print-directory
 PROJECT_NAME ?= inventory-compose
 TEST_RUN_ID ?= $(shell printf '%s' "$(CURDIR)" | cksum | awk '{print $$1}')
 TEST_PROJECT := inventory-check-$(TEST_RUN_ID)
-COMPOSE := docker compose --project-name $(PROJECT_NAME) -f docker-compose.yaml
-TEST_COMPOSE := docker compose --project-name $(TEST_PROJECT) -f compose.test.yaml
+# Передаём путь через окружение, а не подставляем его в shell-код рецептов.
+override ENV_FILE := $(value ENV_FILE)
+export ENV_FILE
+COMPOSE := sh scripts/compose.sh --project-name $(PROJECT_NAME) -f docker-compose.yaml
+TEST_COMPOSE := docker compose --env-file compose.test.env --project-name $(TEST_PROJECT) -f compose.test.yaml
 FRONTEND_TEST_IMAGE ?= inventory-accountment-frontend-test:local
 PNPM_STORE_VOLUME ?= inventory-accountment-pnpm-store
 BASE_REF ?= main
