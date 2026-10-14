@@ -1,12 +1,20 @@
 import os
 import sys
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
-from alembic import context
 
+from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 from app.config import settings
+from app.entities import (  # noqa: F401
+    auth,
+    material,
+    receipt,
+    receipt_status_history,
+    supplier,
+    unit,
+)
 from app.postgresql import Base
-from app.entities import auth, material, receipt, receipt_status_history, supplier, unit  # noqa: F401
 
 os.environ["PYTHONUTF8"] = "1"
 if sys.platform == "win32":
@@ -14,7 +22,7 @@ if sys.platform == "win32":
 
 config = context.config
 if not config.get_main_option("sqlalchemy.url"):
-    config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+    config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

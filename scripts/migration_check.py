@@ -74,7 +74,9 @@ def _assert_test_environment() -> URL:
 
 def _alembic_config(database_url: URL) -> Config:
     config = Config(str(PROJECT_ROOT / "alembic.ini"))
-    config.set_main_option("sqlalchemy.url", database_url.render_as_string(hide_password=False))
+    config.set_main_option(
+        "sqlalchemy.url", database_url.render_as_string(hide_password=False).replace("%", "%%")
+    )
     return config
 
 

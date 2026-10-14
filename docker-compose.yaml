@@ -1,40 +1,58 @@
+name: inventory-compose
+
+x-backend: &backend
+  image: ${COMPOSE_PROJECT_NAME:-inventory-compose}-api:local
+  build:
+    context: .
+    target: runtime
+  environment:
+    APP_ENV: development
+    APP_DEBUG: "false"
+    POSTGRES_HOST: db
+    POSTGRES_USER: ${POSTGRES_USER:-inventory_app}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_inventory_password}
+    POSTGRES_DB: ${POSTGRES_DB:-inventory}
+
 services:
   db:
     image: postgres:16.4-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-inventory_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_inventory_password}
       POSTGRES_DB: ${POSTGRES_DB:-inventory}
-    ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - inventory_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-inventory}"]
-      interval: 5s
+      test: ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 2s
       timeout: 5s
-      retries: 5
+      retries: 30
 
-  app:
-    build:
-      context: .
-      target: runtime
-    environment:
-      APP_ENV: ${APP_ENV}
-      APP_DEBUG: ${APP_DEBUG}
-      DATABASE_URL: ${DATABASE_URL}
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
     depends_on:
       db:
         condition: service_healthy
+    restart: "no"
+
+  app:
+    <<: *backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
     ports:
-      - "0.0.0.0:${APP_PORT}:8000"
+      - "127.0.0.1:${APP_PORT:-8010}:8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live')"]
-      interval: 5s
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      interval: 3s
       timeout: 5s
-      retries: 12
+      retries: 30
 
   frontend:
+    image: ${COMPOSE_PROJECT_NAME:-inventory-compose}-frontend:local
     build:
       context: .
       target: frontend
@@ -44,22 +62,21 @@ services:
       app:
         condition: service_healthy
     ports:
-      - "0.0.0.0:${FRONTEND_PORT:-5173}:5173"
+      - "127.0.0.1:${FRONTEND_PORT:-5180}:5173"
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
-      interval: 5s
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 3s
       timeout: 5s
-      retries: 12
+      retries: 30
 
   pg-tools:
     image: postgres:16.4-alpine
     profiles: ["tools"]
     environment:
-      APP_ENV: ${APP_ENV}
       PGHOST: db
       PGPORT: "5432"
-      PGUSER: ${POSTGRES_USER:-postgres}
-      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      PGUSER: ${POSTGRES_USER:-inventory_app}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-local_inventory_password}
       PGDATABASE: ${POSTGRES_DB:-inventory}
     depends_on:
       db:
@@ -69,4 +86,4 @@ services:
       - ./scripts:/scripts:ro
 
 volumes:
-  postgres_data:
+  inventory_data:

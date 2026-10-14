@@ -1,186 +1,69 @@
 SHELL := /bin/sh
-# Заменяем общие Entering/Leaving directory на поясняющие этапы ниже.
 MAKEFLAGS += --no-print-directory
 
-DOCKER ?= 0
-DOCKER_RUN_ID ?= $(shell printf '%s' "$(CURDIR)" | cksum | awk '{print $$1}')
-UV_VERSION := 0.5.29
-PYTHON ?= python3
-UV := $(PYTHON) -m uv
-RUNTIME_DIR := reports/runtime
+# Рабочие данные и проверки имеют разные Compose-проекты и тома.
+PROJECT_NAME ?= inventory-compose
+TEST_RUN_ID ?= $(shell printf '%s' "$(CURDIR)" | cksum | awk '{print $$1}')
+TEST_PROJECT := inventory-check-$(TEST_RUN_ID)
+COMPOSE := docker compose --project-name $(PROJECT_NAME) -f docker-compose.yaml
+TEST_COMPOSE := docker compose --project-name $(TEST_PROJECT) -f compose.test.yaml
 FRONTEND_TEST_IMAGE ?= inventory-accountment-frontend-test:local
 PNPM_STORE_VOLUME ?= inventory-accountment-pnpm-store
-PRODUCTION_ENV_FILE ?= /etc/InventoryAccountment/InventoryAccountment.env
-BACKUP ?=
 BASE_REF ?= main
+BACKUP ?=
 TARGET_DATABASE ?=
 TARGET_DATABASE_URL ?=
 CONFIRM_TARGET_DATABASE ?=
 RESTORE_EXISTING ?= 0
 
-ifneq ($(filter TEST,$(.VARIABLES)),)
-$(error Параметр TEST устарел. Используйте DOCKER=1 для изолированного локального контура)
+ifneq ($(filter DOCKER LOCAL TEST,$(.VARIABLES)),)
+$(error Флаги DOCKER/LOCAL/TEST удалены. Все команды работают в Docker; проверки изолированы автоматически)
 endif
 
-ifneq ($(filter LOCAL,$(.VARIABLES)),)
-$(error Параметр LOCAL переименован. Используйте DOCKER=1 для изолированного Docker-контура)
-endif
-
-ifeq ($(DOCKER),1)
-ENV_FILE := .env.example
-DOCKER_PROJECT := inventory-accountment-local-$(DOCKER_RUN_ID)
-COMPOSE := docker compose --project-name $(DOCKER_PROJECT) --env-file $(ENV_FILE) -f compose.test.yaml
-else
-ENV_FILE := $(PRODUCTION_ENV_FILE)
-DOCKER_PROJECT := inventory-accountment
-COMPOSE := docker compose --project-name $(DOCKER_PROJECT) --env-file $(ENV_FILE) -f docker-compose.yaml
-endif
-
-.PHONY: setup run up down stop-local status migrate test test-in-container frontend-test-image ensure-pnpm-store quality mutation migration-check backup restore backup-restore-check lock-check secret-scan image-scan container-smoke verify check-docker-environment check-docker-project-clean check-working-tree-diff check-branch-diff
+.PHONY: setup run up down status migrate backup restore test test-in-container quality verify test-clean check-test-environment check-test-project-clean frontend-test-image ensure-pnpm-store mutation migration-check backup-restore-check container-smoke lock-check secret-scan image-scan check-working-tree-diff check-branch-diff
 
 setup:
-	@$(PYTHON) --version
-	@sh scripts/ensure_docker.sh
+	@docker info >/dev/null
 	@docker compose version
-	@node --version
-	@pnpm --version
-	@test -f $(ENV_FILE) || (echo "Нет файла конфигурации $(ENV_FILE)" >&2; exit 2)
-	@$(PYTHON) -m pip install --user --break-system-packages "uv==$(UV_VERSION)"
-	@$(UV) sync --frozen --extra dev
-	@pnpm --dir frontend install --frozen-lockfile --package-import-method=copy
+	@$(COMPOSE) config --quiet
+	@$(COMPOSE) build app frontend
 
-check-docker-environment:
-	@test "$(DOCKER)" = "1" || (echo "Эта операция разрешена только с DOCKER=1" >&2; exit 2)
-	@test -n "$(DOCKER_RUN_ID)" || (echo "Укажите непустой DOCKER_RUN_ID" >&2; exit 2)
-	@test -f .env.example || (echo "Нет .env.example с настройками тестового контура" >&2; exit 2)
-	@grep -qx 'APP_ENV=test' .env.example || (echo "APP_ENV в .env.example должен быть test" >&2; exit 2)
-	@grep -Eq '^POSTGRES_DB=.*_test$$' .env.example || (echo "Имя тестовой БД в .env.example должно оканчиваться на _test" >&2; exit 2)
-
-run:
-ifeq ($(DOCKER),1)
-	@$(MAKE) check-docker-environment DOCKER=1
-	@$(COMPOSE) up --build --detach --wait
-else
-	@set -eu; \
-	runtime_dir="$(RUNTIME_DIR)"; \
-	mkdir -p "$$runtime_dir"; \
-	for service in backend frontend; do \
-		pid_file="$$runtime_dir/$$service.pid"; \
-		if [ -f "$$pid_file" ]; then \
-			pid=$$(cat "$$pid_file"); \
-			if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
-				echo "$$service уже запущен с PID $$pid; используйте make status или make down" >&2; \
-				exit 2; \
-			fi; \
-			rm -f "$$pid_file"; \
-		fi; \
-	done; \
-	nohup $(UV) run --frozen uvicorn app.main:app --host 0.0.0.0 --port "$${APP_PORT:-8000}" > "$$runtime_dir/backend.log" 2>&1 & echo $$! > "$$runtime_dir/backend.pid"; \
-	nohup env VITE_API_PROXY_TARGET="http://127.0.0.1:$${APP_PORT:-8000}" pnpm --dir frontend exec vite --host 0.0.0.0 --port "$${FRONTEND_PORT:-5173}" > "$$runtime_dir/frontend.log" 2>&1 & echo $$! > "$$runtime_dir/frontend.pid"; \
-	sleep 1; \
-	for service in backend frontend; do \
-		pid=$$(cat "$$runtime_dir/$$service.pid"); \
-		if ! kill -0 "$$pid" 2>/dev/null; then \
-			echo "$$service не запустился; смотрите $$runtime_dir/$$service.log" >&2; \
-			cat "$$runtime_dir/$$service.log" >&2 || true; \
-			$(MAKE) stop-local; \
-			exit 2; \
-		fi; \
-	done; \
-	echo "Backend и frontend запущены в фоне; используйте make status или make down"
-endif
+run: up
 
 up:
-ifeq ($(DOCKER),1)
-	@$(MAKE) check-docker-environment DOCKER=1
-endif
 	@$(COMPOSE) up --build --detach --wait
 
 down:
-ifeq ($(DOCKER),1)
-	@$(MAKE) check-docker-environment DOCKER=1
-	@$(COMPOSE) down --volumes --remove-orphans
-else
-	@$(MAKE) stop-local
 	@$(COMPOSE) down --remove-orphans
-endif
-
-stop-local:
-	@set -eu; \
-	runtime_dir="$(RUNTIME_DIR)"; \
-	stopped=0; \
-	for service in backend frontend; do \
-		pid_file="$$runtime_dir/$$service.pid"; \
-		if [ ! -f "$$pid_file" ]; then continue; fi; \
-		pid=$$(cat "$$pid_file"); \
-		if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
-			kill "$$pid" 2>/dev/null || true; \
-			echo "$$service остановлен (PID $$pid)"; \
-			stopped=1; \
-		fi; \
-		rm -f "$$pid_file"; \
-	done; \
-	if [ "$$stopped" -eq 0 ]; then echo "Фоновые процессы make run не найдены"; fi
 
 status:
-	@set -eu; \
-	project="$(DOCKER_PROJECT)"; \
-	container_ids=""; \
-	running_container_ids=""; \
-	if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then \
-		container_ids=$$(docker ps --all --filter "label=com.docker.compose.project=$$project" --quiet); \
-		running_container_ids=$$(docker ps --filter "label=com.docker.compose.project=$$project" --quiet); \
-	else \
-		echo "Docker недоступен; контейнеры Compose-проекта $$project не проверены."; \
-	fi; \
-	if [ -n "$$container_ids" ]; then \
-		echo "Состояние контейнеров Compose-проекта $$project:"; \
-		docker ps --all --filter "label=com.docker.compose.project=$$project" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'; \
-		echo "Последние 50 строк логов каждого контейнера:"; \
-		for container_id in $$container_ids; do \
-			echo "==> $$container_id"; \
-			docker logs --tail 50 "$$container_id" 2>&1 || true; \
-		done; \
-		if [ -n "$$running_container_ids" ]; then exit 0; fi; \
-	fi; \
-	echo "Контейнеры Compose-проекта $$project не запущены."; \
-	echo "Проверка локально запущенного приложения:"; \
-	backend_url="http://127.0.0.1:$${APP_PORT:-8000}"; \
-	frontend_url="http://127.0.0.1:$${FRONTEND_PORT:-5173}"; \
-	backend_ok=0; frontend_ok=0; \
-	if curl --fail --silent --show-error "$$backend_url/health/live" >/dev/null && curl --fail --silent --show-error "$$backend_url/health/ready" >/dev/null; then \
-		backend_ok=1; echo "Backend доступен: $$backend_url"; \
-	else \
-		echo "Backend недоступен: $$backend_url"; \
-	fi; \
-	if curl --fail --silent --show-error "$$frontend_url/" >/dev/null; then \
-		frontend_ok=1; echo "Frontend доступен: $$frontend_url"; \
-	else \
-		echo "Frontend недоступен: $$frontend_url"; \
-	fi; \
-	if [ "$$backend_ok" -eq 1 ] && [ "$$frontend_ok" -eq 1 ]; then exit 0; fi; \
-	exit 2
+	@$(COMPOSE) ps --all
+	@$(COMPOSE) logs --tail 50
 
 migrate:
-ifeq ($(DOCKER),1)
-	@$(MAKE) check-docker-environment DOCKER=1
-	@$(COMPOSE) run --rm app alembic upgrade head
-else
-	@$(UV) run --frozen alembic upgrade head
-endif
+	@$(COMPOSE) run --rm migrate
+
+check-test-environment:
+	@test -n "$(TEST_RUN_ID)" || (echo "TEST_RUN_ID не должен быть пустым" >&2; exit 2)
+	@test "$(TEST_PROJECT)" != "$(PROJECT_NAME)" || (echo "Тестовый и рабочий проекты должны различаться" >&2; exit 2)
+	@$(TEST_COMPOSE) config --quiet
+
+# Удаляет только ресурсы проверок. make down сохраняет рабочий том.
+test-clean: check-test-environment
+	@$(TEST_COMPOSE) down --volumes --remove-orphans
 
 test:
 	@echo '==> Тесты: запускаю изолированный Docker-контур'
-	@$(MAKE) test-in-container DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"
+	@$(MAKE) test-in-container TEST_RUN_ID="$(TEST_RUN_ID)"
 
 test-in-container:
-	@$(MAKE) check-docker-environment DOCKER=1
+	@$(MAKE) check-test-environment
 	@echo '==> Backend: собираю актуальный test-образ'
-	@$(COMPOSE) build --progress=plain app
+	@$(TEST_COMPOSE) build --progress=plain app
 	@echo '==> Backend: применяю миграции к тестовой БД'
-	@$(COMPOSE) run --rm --user root app alembic upgrade head
+	@$(TEST_COMPOSE) run --rm --user root app alembic upgrade head
 	@echo '==> Backend: запускаю pytest и проверку покрытия'
-	@$(COMPOSE) run --rm --user root app python scripts/localize_test_output.py -- pytest
+	@$(TEST_COMPOSE) run --rm --user root app python scripts/localize_test_output.py -- pytest
 	@echo '==> Frontend: подготавливаю test-образ и кэш pnpm'
 	@$(MAKE) frontend-test-image
 	@$(MAKE) ensure-pnpm-store
@@ -201,33 +84,19 @@ ensure-pnpm-store:
 	fi
 
 quality:
-ifeq ($(DOCKER),1)
-	@$(MAKE) check-docker-environment DOCKER=1
+	@$(MAKE) check-test-environment
 	@echo '==> Backend: собираю актуальный test-образ для статических проверок'
-	@$(COMPOSE) build --progress=plain app
+	@$(TEST_COMPOSE) build --progress=plain app
 	@echo '==> Backend: запускаю Ruff и mypy без зависимостей Compose'
-	@$(COMPOSE) run --rm --no-deps --user root app sh -c 'mkdir -p reports && ruff format --check --no-cache app tests scripts && ruff check --no-cache app tests scripts && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts'
+	@$(TEST_COMPOSE) run --rm --no-deps --user root app sh -c 'mkdir -p reports && ruff format --check --no-cache app tests scripts && ruff check --no-cache app tests scripts && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts'
 	@echo '==> SAST: начинаю статический анализ безопасности; тип — Bandit'
 	@set +e; \
-	if $(COMPOSE) run --rm --no-deps --user root app bandit -q -r app scripts -lll -f json -o reports/bandit.json; then sast_status=0; else sast_status=$$?; fi; \
-	if $(COMPOSE) run --rm --no-deps --user root app python scripts/summarize_bandit.py reports/bandit.json "$$sast_status"; then summary_status=0; else summary_status=$$?; fi; \
+	if $(TEST_COMPOSE) run --rm --no-deps --user root app bandit -q -r app scripts -lll -f json -o reports/bandit.json; then sast_status=0; else sast_status=$$?; fi; \
+	if $(TEST_COMPOSE) run --rm --no-deps --user root app python scripts/summarize_bandit.py reports/bandit.json "$$sast_status"; then summary_status=0; else summary_status=$$?; fi; \
 	if [ "$$sast_status" -ne 0 ]; then exit "$$sast_status"; fi; \
 	exit "$$summary_status"
 	@echo '==> Backend: запускаю audit Python-зависимостей без зависимостей Compose'
-	@$(COMPOSE) run --rm --no-deps --user root app sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
-else
-	@$(UV) run --frozen ruff format --check --no-cache app tests scripts
-	@$(UV) run --frozen ruff check --no-cache app tests scripts
-	@MYPY_CACHE_DIR=/tmp/mypy $(UV) run --frozen mypy app tests scripts
-	@mkdir -p reports
-	@echo '==> SAST: начинаю статический анализ безопасности; тип — Bandit'
-	@set +e; \
-	if $(UV) run --frozen bandit -q -r app scripts -lll -f json -o reports/bandit.json; then sast_status=0; else sast_status=$$?; fi; \
-	if $(UV) run --frozen python scripts/summarize_bandit.py reports/bandit.json "$$sast_status"; then summary_status=0; else summary_status=$$?; fi; \
-	if [ "$$sast_status" -ne 0 ]; then exit "$$sast_status"; fi; \
-	exit "$$summary_status"
-	@$(UV) run --frozen sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
-endif
+	@$(TEST_COMPOSE) run --rm --no-deps --user root app sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
 	@mkdir -p reports
 	@echo '==> Frontend: подготавливаю образ и pnpm-кэш для проверок качества'
 	@$(MAKE) frontend-test-image
@@ -247,34 +116,18 @@ image-scan:
 	@docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$(CURDIR)/reports:/reports" aquasec/trivy:0.56.2 image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed --format json --output /reports/trivy-image.json "$(IMAGE_ID)"
 
 mutation:
-ifeq ($(DOCKER),1)
-	@$(MAKE) check-docker-environment DOCKER=1
-	@$(COMPOSE) run --rm app alembic upgrade head
-	@$(COMPOSE) run --rm -e PYTEST_ADDOPTS=--no-cov app python scripts/check_critical_mutations.py
-else
-	@echo "Мутационная проверка разрешена только с DOCKER=1" >&2
-	@exit 2
-endif
+	@$(MAKE) check-test-environment
+	@$(TEST_COMPOSE) run --rm app alembic upgrade head
+	@$(TEST_COMPOSE) run --rm -e PYTEST_ADDOPTS=--no-cov app python scripts/check_critical_mutations.py
 
 migration-check:
-ifeq ($(DOCKER),1)
-	@$(MAKE) check-docker-environment DOCKER=1
-	@$(COMPOSE) run --rm app python scripts/migration_check.py
-else
-	@echo "Проверка миграций разрешена только с DOCKER=1" >&2
-	@exit 2
-endif
+	@$(MAKE) check-test-environment
+	@$(TEST_COMPOSE) run --rm app python scripts/migration_check.py
 
 backup:
-ifeq ($(DOCKER),1)
-	@$(MAKE) check-docker-environment DOCKER=1
-endif
 	@$(COMPOSE) run --rm pg-tools sh /scripts/backup_restore.sh backup /backups
 
 restore:
-ifeq ($(DOCKER),1)
-	@$(MAKE) check-docker-environment DOCKER=1
-endif
 	@test -n "$(BACKUP)" || (echo "Укажите BACKUP=backups/<имя>.dump" >&2; exit 2)
 	@case "$(BACKUP)" in backups/*.dump) ;; *) echo "BACKUP должен указывать на дамп в backups/" >&2; exit 2 ;; esac
 	@backup_name=$$(basename "$(BACKUP)"); \
@@ -287,18 +140,14 @@ endif
 		pg-tools sh /scripts/backup_restore.sh restore
 
 backup-restore-check:
-ifeq ($(DOCKER),1)
-	@$(MAKE) check-docker-environment DOCKER=1
-	@$(COMPOSE) run --rm app alembic upgrade head
-	@$(COMPOSE) run --rm pg-tools sh /scripts/backup_restore_check.sh /backups
-else
-	@echo "Проверка backup/restore разрешена только с DOCKER=1" >&2
-	@exit 2
-endif
+	@$(MAKE) check-test-environment
+	@$(TEST_COMPOSE) run --rm app alembic upgrade head
+	@$(TEST_COMPOSE) run --rm pg-tools sh /scripts/backup_restore_check.sh /backups
 
 lock-check:
 	@echo '==> Lock-файлы: проверяю Python-зависимости'
-	@$(UV) lock --check
+	@$(TEST_COMPOSE) build app
+	@$(TEST_COMPOSE) run --rm --no-deps --user root app uv lock --check
 	@echo '==> Lock-файлы: подготавливаю frontend-образ и pnpm-кэш'
 	@$(MAKE) frontend-test-image
 	@$(MAKE) ensure-pnpm-store
@@ -306,28 +155,23 @@ lock-check:
 	@docker run --rm -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)" pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store
 
 container-smoke:
-ifeq ($(DOCKER),1)
-	@$(MAKE) check-docker-environment DOCKER=1
+	@$(MAKE) check-test-environment
 	@set -eu; \
-	cleanup() { $(COMPOSE) down --volumes --remove-orphans; }; \
+	cleanup() { $(TEST_COMPOSE) down --volumes --remove-orphans; }; \
 	trap cleanup EXIT HUP INT TERM; \
-	$(COMPOSE) up --build --detach --wait; \
-	image_id="inventory-accountment-local-ubuntu-verify-app:latest"; \
+	$(TEST_COMPOSE) up --build --detach --wait; \
+	image_id=$$(docker inspect --format '{{.Image}}' "$$($(TEST_COMPOSE) ps -q app)"); \
 	$(MAKE) image-scan IMAGE_ID="$$image_id"; \
-	$(COMPOSE) run --rm app alembic upgrade head; \
-	$(COMPOSE) exec -T app python scripts/container_smoke.py; \
-	$(COMPOSE) ps; \
+	$(TEST_COMPOSE) run --rm app alembic upgrade head; \
+	$(TEST_COMPOSE) exec -T app python scripts/container_smoke.py; \
+	$(TEST_COMPOSE) ps; \
 	cleanup; \
 	trap - EXIT HUP INT TERM
-else
-	@echo "Контейнерный smoke-сценарий разрешён только с DOCKER=1" >&2
-	@exit 2
-endif
 
-check-docker-project-clean:
-	@$(MAKE) check-docker-environment DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"
-	@test -z "$$($(COMPOSE) ps --all --quiet)" || (echo "Остались контейнеры тестового Compose-проекта" >&2; exit 2)
-	@test -z "$$(docker volume ls --filter label=com.docker.compose.project=$(DOCKER_PROJECT) --quiet)" || (echo "Остались тома тестового Compose-проекта" >&2; exit 2)
+check-test-project-clean:
+	@$(MAKE) check-test-environment TEST_RUN_ID="$(TEST_RUN_ID)"
+	@test -z "$$($(TEST_COMPOSE) ps --all --quiet)" || (echo "Остались контейнеры тестового Compose-проекта" >&2; exit 2)
+	@test -z "$$(docker volume ls --filter label=com.docker.compose.project=$(TEST_PROJECT) --quiet)" || (echo "Остались тома тестового Compose-проекта" >&2; exit 2)
 
 check-working-tree-diff:
 	@git diff --check
@@ -338,20 +182,19 @@ check-branch-diff:
 
 verify:
 	@set -eu; \
-	cleanup() { echo '==> Очистка изолированного тестового Compose-проекта; pnpm-кэш $(PNPM_STORE_VOLUME) сохраняется'; $(MAKE) down DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; }; \
+	cleanup() { echo '==> Очистка изолированного тестового Compose-проекта; pnpm-кэш $(PNPM_STORE_VOLUME) сохраняется'; $(MAKE) test-clean TEST_RUN_ID="$(TEST_RUN_ID)"; }; \
 	trap cleanup EXIT HUP INT TERM; \
-	echo '==> Подготовка изолированного Docker-контура'; $(MAKE) check-docker-environment DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
-	echo '==> Проверка lock-файлов'; $(MAKE) lock-check DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
-	echo '==> Проверка качества, включая SAST Bandit'; $(MAKE) quality DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
-	echo '==> Автоматические тесты'; $(MAKE) test DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
-	echo '==> Мутационная проверка'; $(MAKE) mutation DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
-	echo '==> Проверка миграций'; $(MAKE) migration-check DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
-	echo '==> Проверка backup/restore'; $(MAKE) backup-restore-check DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
-	echo '==> Контейнерный smoke-сценарий'; $(MAKE) container-smoke DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
-	echo '==> Проверка очистки тестового проекта'; $(MAKE) check-docker-project-clean DOCKER=1 DOCKER_RUN_ID="$(DOCKER_RUN_ID)"; \
+	echo '==> Подготовка изолированного Docker-контура'; $(MAKE) check-test-environment TEST_RUN_ID="$(TEST_RUN_ID)"; \
+	echo '==> Проверка lock-файлов'; $(MAKE) lock-check TEST_RUN_ID="$(TEST_RUN_ID)"; \
+	echo '==> Проверка качества, включая SAST Bandit'; $(MAKE) quality TEST_RUN_ID="$(TEST_RUN_ID)"; \
+	echo '==> Автоматические тесты'; $(MAKE) test TEST_RUN_ID="$(TEST_RUN_ID)"; \
+	echo '==> Мутационная проверка'; $(MAKE) mutation TEST_RUN_ID="$(TEST_RUN_ID)"; \
+	echo '==> Проверка миграций'; $(MAKE) migration-check TEST_RUN_ID="$(TEST_RUN_ID)"; \
+	echo '==> Проверка backup/restore'; $(MAKE) backup-restore-check TEST_RUN_ID="$(TEST_RUN_ID)"; \
+	echo '==> Контейнерный smoke-сценарий'; $(MAKE) container-smoke TEST_RUN_ID="$(TEST_RUN_ID)"; \
+	echo '==> Проверка очистки тестового проекта'; $(MAKE) check-test-project-clean TEST_RUN_ID="$(TEST_RUN_ID)"; \
 	echo '==> Проверка whitespace рабочей копии'; $(MAKE) check-working-tree-diff; \
 	echo '==> Проверка whitespace веточной разницы'; $(MAKE) check-branch-diff; \
 	cleanup; \
 	trap - EXIT HUP INT TERM
-	@echo '==> Проверки успешно завершены. Запускаю приложение: make up DOCKER=$(DOCKER)'
-	@$(MAKE) up DOCKER="$(DOCKER)"
+	@echo '==> Проверки успешно завершены; приложение автоматически не запускается'

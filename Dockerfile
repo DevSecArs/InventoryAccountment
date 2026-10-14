@@ -52,19 +52,26 @@ FROM frontend-base AS frontend
 
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
-COPY frontend ./
+# Copy source paths explicitly: Windows pnpm links in node_modules may be unreadable.
+COPY frontend/src ./src
+COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./
+COPY frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/.gitignore frontend/README.md ./
 EXPOSE 5173
 CMD ["pnpm", "exec", "vite", "--host", "0.0.0.0", "--port", "5173"]
 
 FROM frontend-base AS frontend-test
 
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
-COPY frontend ./
+# Copy source paths explicitly: Windows pnpm links in node_modules may be unreadable.
+COPY frontend/src ./src
+COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./
+COPY frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/.gitignore frontend/README.md ./
 COPY scripts/localize_test_output.mjs /scripts/localize_test_output.mjs
 CMD ["sh", "-lc", "node /scripts/localize_test_output.mjs -- pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && node /scripts/localize_test_output.mjs -- pnpm test:run"]
 
 FROM builder AS test-builder
 
+COPY Makefile ./
 COPY tests ./tests
 RUN uv sync --frozen --extra dev
 RUN find /app/.venv /usr/local/lib/python3.11/site-packages -name "*.cdx.json" -delete 2>/dev/null || true
@@ -72,7 +79,11 @@ RUN find /app/.venv /usr/local/lib/python3.11/site-packages -name "*.cdx.json" -
 FROM runtime AS test
 
 USER root
+RUN apt-get update && apt-get install -y --no-install-recommends make && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
 COPY --from=test-builder --chown=app:app /app/.venv /app/.venv
 RUN find /app -name "*.cdx.json" -delete 2>/dev/null || true
+COPY --from=test-builder --chown=app:app /app/Makefile /app/Makefile
 COPY --from=test-builder --chown=app:app /app/tests /app/tests
 USER app
