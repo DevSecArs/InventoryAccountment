@@ -20,9 +20,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Подготовить окружение
-        run: make setup
-
       - name: Выполнить обязательный контур
         run: make verify
 

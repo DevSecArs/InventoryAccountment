@@ -221,7 +221,7 @@ def scan_image(directory: Path, image_id: str, uid: str, gid: str) -> None:
     require(result.returncode == 0, "Secret scan не прошёл для " + image_id)
 
 
-def main() -> None:
+def main(images: dict[str, str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--static-only", action="store_true")
@@ -262,6 +262,10 @@ def main() -> None:
         backup_dir = directory / "backups"
         backup_dir.mkdir()
         for name, service in config["services"].items():
+            if images is not None:
+                service["image"] = images[name]
+                service.pop("build", None)
+                service["pull_policy"] = "never"
             if name in PORTS:
                 service["ports"][0]["published"] = "0"
             if name == "pg-tools":
@@ -282,7 +286,16 @@ def main() -> None:
         checked: list[dict[str, str]] = []
         try:
             print("Сборка и запуск изолированного проекта…", flush=True)
-            run(*command, "up", "--build", "-d", "--wait", "--wait-timeout", "120", env=env)
+            run(
+                *command,
+                "up",
+                "--no-build" if images else "--build",
+                "-d",
+                "--wait",
+                "--wait-timeout",
+                "120",
+                env=env,
+            )
             for name in sorted(DAEMONS):
                 print("Проверка UID и healthcheck: " + name, flush=True)
                 container = run(*command, "ps", "-q", name, env=env)
@@ -310,6 +323,7 @@ def main() -> None:
                     )
                     require(nonroot(image_user), name + ": root в проектном образе")
             print("Проверка backup/restore…", flush=True)
+            run(*command, "exec", "-T", "app", "python", "scripts/container_smoke.py", env=env)
             run(
                 *command,
                 "run",
@@ -370,7 +384,7 @@ def main() -> None:
                 bool(revision) and run(*command, *sql, env=env) == revision,
                 "Схема БД потеряна после пересоздания контейнера",
             )
-            for target in ("test", "frontend-test"):
+            for target in () if images else ("test", "frontend-test"):
                 image = f"{project}-{target}:local"
                 run(
                     "docker",
@@ -397,8 +411,10 @@ def main() -> None:
                     }
                 )
             print("Проверка отдельного Linux test-образа…", flush=True)
-            run(sys.executable, "scripts/build_test_image.py", env=env)
-            test_uid = run("docker", "run", "--rm", "inventory-accountment-tests:local", "id", "-u")
+            if images is None:
+                run(sys.executable, "scripts/build_test_image.py", env=env)
+            test_image = images["tests"] if images else "inventory-accountment-tests:local"
+            test_uid = run("docker", "run", "--rm", test_image, "id", "-u")
             require(nonroot(test_uid), "Linux test-образ: root")
             checked.append(
                 {
@@ -409,23 +425,27 @@ def main() -> None:
                         "inspect",
                         "--format",
                         "{{.Id}}",
-                        "inventory-accountment-tests:local",
+                        test_image,
                     ),
                     "uid": test_uid,
                 }
             )
             # Secret scan собранного образа по image ID без доступа к Docker socket.
             scanned: set[str] = set()
-            for item in checked:
+            for item in [] if images else checked:
                 if item["image_id"] in scanned:
                     continue
                 print("Проверка секретов образа: " + item["service"], flush=True)
                 scan_image(directory, item["image_id"], uid, gid)
                 scanned.add(item["image_id"])
             (ROOT / "reports/container-check.json").write_text(
-                json.dumps({"status": "passed", "images": checked}, indent=2), encoding="utf-8"
+                json.dumps(
+                    {"status": "runtime-passed" if images else "passed", "images": checked},
+                    indent=2,
+                ),
+                encoding="utf-8",
             )
-            print("Контейнеры, UID, healthcheck, backup/restore и secret scan: OK", flush=True)
+            print("Контейнерные сценарии: OK", flush=True)
         finally:
             run(*command, "down", "--volumes", "--remove-orphans", env=env)
 

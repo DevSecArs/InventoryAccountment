@@ -59,8 +59,11 @@ python scripts/container_check.py
 python scripts/container_check.py --static-only
 ```
 
-Это не заменяет полный `container-check` или `verify`. В `make verify` новая
-проверка выполняется до остальных обязательных этапов, без снижения порогов.
+Это не заменяет полный `container-check` или `verify`. В `make verify` статическая
+политика проверяется до сборки, а контейнерные сценарии — после тестов, на уже
+собранных image ID. Статус `runtime-passed` означает, что сканирование ещё
+предстоит в общем контуре. После всех проверок verify запускает рабочую среду.
+Порядок и критерии: [VERIFY_PIPELINE.md](VERIFY_PIPELINE.md).
 
 ## Пользователи и каталоги
 
