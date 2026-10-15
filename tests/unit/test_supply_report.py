@@ -16,7 +16,7 @@ def _row(**overrides: object) -> dict[str, object]:
         "document_number": "DOC-1",
         "received_at": datetime(2026, 1, 1, 9, 30, tzinfo=timezone.utc),
         "supplier_id": "supplier-1",
-        "supplier_name": "Поставщик, \"А\"\nНовый",
+        "supplier_name": 'Поставщик, "А"\nНовый',
         "material_id": "material-1",
         "material_sku": "MAT-1",
         "material_name": "Материал",
@@ -37,7 +37,9 @@ def _row(**overrides: object) -> dict[str, object]:
         (datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 1, 1, tzinfo=timezone.utc)),
     ],
 )
-def test_period_requires_aware_and_forward_datetimes(date_from: datetime, date_to: datetime) -> None:
+def test_period_requires_aware_and_forward_datetimes(
+    date_from: datetime, date_to: datetime
+) -> None:
     with pytest.raises(ValueError):
         validate_period(date_from, date_to)
 

@@ -59,7 +59,9 @@ def validate_period(date_from: datetime, date_to: datetime) -> None:
         raise ValueError("Параметр from должен быть меньше to")
 
 
-def _base_query(date_from: datetime, date_to: datetime, supplier_id: str | None, material_id: str | None):
+def _base_query(
+    date_from: datetime, date_to: datetime, supplier_id: str | None, material_id: str | None
+):
     query = (
         select(
             Receipt.id.label("receipt_id"),
@@ -79,7 +81,11 @@ def _base_query(date_from: datetime, date_to: datetime, supplier_id: str | None,
         .join(Supplier, Supplier.id == Receipt.supplier_id)
         .join(Material, Material.id == ReceiptItem.material_id)
         .join(Unit, Unit.id == Material.unit_id)
-        .where(Receipt.status == "posted", Receipt.received_at >= date_from, Receipt.received_at < date_to)
+        .where(
+            Receipt.status == "posted",
+            Receipt.received_at >= date_from,
+            Receipt.received_at < date_to,
+        )
     )
     if supplier_id:
         query = query.where(Receipt.supplier_id == supplier_id)
@@ -106,7 +112,10 @@ def get_supply_report(
     total = db.scalar(select(func.count()).select_from(base)) or 0
     items = _mapping_rows(
         db.execute(
-            select(base).order_by(base.c.received_at, base.c.receipt_id, base.c.material_id).offset(skip).limit(limit)
+            select(base)
+            .order_by(base.c.received_at, base.c.receipt_id, base.c.material_id)
+            .offset(skip)
+            .limit(limit)
         )
     )
     totals = _mapping_rows(
@@ -143,17 +152,38 @@ def get_supply_export(
 ) -> list[dict[str, object]]:
     validate_period(date_from, date_to)
     base = _base_query(date_from, date_to, supplier_id, material_id).subquery()
-    return _mapping_rows(db.execute(select(base).order_by(base.c.received_at, base.c.receipt_id, base.c.material_id)))
+    return _mapping_rows(
+        db.execute(select(base).order_by(base.c.received_at, base.c.receipt_id, base.c.material_id))
+    )
 
 
 CSV_FIELDS = [
-    "receipt_id", "document_number", "received_at", "supplier_id", "supplier_name", "material_id",
-    "material_sku", "material_name", "unit_id", "unit_code", "unit_name", "quantity",
+    "receipt_id",
+    "document_number",
+    "received_at",
+    "supplier_id",
+    "supplier_name",
+    "material_id",
+    "material_sku",
+    "material_name",
+    "unit_id",
+    "unit_code",
+    "unit_name",
+    "quantity",
 ]
 CSV_HEADERS = [
-    "ID поступления", "Номер документа", "Дата поступления", "ID поставщика", "Поставщик",
-    "ID материала", "Артикул материала", "Материал", "ID единицы измерения",
-    "Код единицы измерения", "Единица измерения", "Количество",
+    "ID поступления",
+    "Номер документа",
+    "Дата поступления",
+    "ID поставщика",
+    "Поставщик",
+    "ID материала",
+    "Артикул материала",
+    "Материал",
+    "ID единицы измерения",
+    "Код единицы измерения",
+    "Единица измерения",
+    "Количество",
 ]
 
 

@@ -51,8 +51,7 @@ def main() -> int:
         print("Результат: уязвимостей не найдено — всё чисто.")
     else:
         print(
-            f"Результат: Bandit завершился с кодом {scan_status}; "
-            "подтвердить чистоту не удалось."
+            f"Результат: Bandit завершился с кодом {scan_status}; подтвердить чистоту не удалось."
         )
     if scan_errors:
         print(f"Ошибок анализа Bandit: {len(scan_errors)}.")

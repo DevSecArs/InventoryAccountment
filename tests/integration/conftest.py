@@ -17,7 +17,9 @@ def _assert_test_database() -> None:
     if os.environ.get("APP_ENV") != "test":
         raise RuntimeError("Интеграционные тесты разрешены только при APP_ENV=test")
     if not database_url or database_url != test_database_url:
-        raise RuntimeError("Интеграционные тесты требуют совпадающие DATABASE_URL и TEST_DATABASE_URL")
+        raise RuntimeError(
+            "Интеграционные тесты требуют совпадающие DATABASE_URL и TEST_DATABASE_URL"
+        )
     database_name = urlparse(database_url).path.removeprefix("/")
     if not database_name.endswith("_test"):
         raise RuntimeError("Имя БД интеграционных тестов должно оканчиваться на _test")

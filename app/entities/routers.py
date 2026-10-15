@@ -93,7 +93,9 @@ def patch_receipt(
     if receipt is None:
         raise HTTPException(status_code=404, detail="Поступление не найдено")
     try:
-        return receipt_service.receipt_to_response(receipt_service.update_receipt(db, receipt, payload))
+        return receipt_service.receipt_to_response(
+            receipt_service.update_receipt(db, receipt, payload)
+        )
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ValueError as error:
@@ -138,7 +140,9 @@ def post_receipt(
         raise HTTPException(status_code=409, detail="Конфликт проведения поступления") from error
 
 
-@receipt_router.get("/{receipt_id}/history", response_model=receipt_history_service.ReceiptHistoryResponse)
+@receipt_router.get(
+    "/{receipt_id}/history", response_model=receipt_history_service.ReceiptHistoryResponse
+)
 def receipt_history(
     receipt_id: str, db: DatabaseSession, user: auth_service.User = auth_service.CurrentUser
 ) -> dict[str, object]:

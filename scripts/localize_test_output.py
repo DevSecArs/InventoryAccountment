@@ -19,10 +19,8 @@ def localize(output: str) -> str:
             r"(?m)^Required test coverage of ([\d.]+%) reached\. Total coverage: ([\d.]+%)$",
             r"Минимальное покрытие (\1) достигнуто. Общее покрытие: \2",
         ),
-        (r"(?m)^\s*Tests\s+(\d+) passed(?: \((\d+)\))?$",
-         r"      Успешно тестов: \1 (из \2)"),
-        (r"(?m)^\s*Test Files\s+(\d+) passed(?: \((\d+)\))?$",
-         r"Успешно файлов: \1 (из \2)"),
+        (r"(?m)^\s*Tests\s+(\d+) passed(?: \((\d+)\))?$", r"      Успешно тестов: \1 (из \2)"),
+        (r"(?m)^\s*Test Files\s+(\d+) passed(?: \((\d+)\))?$", r"Успешно файлов: \1 (из \2)"),
         (r"(?m)^\s*Start at:", "  Начало:"),
         (r"(?m)^\s*Duration:", "  Длительность:"),
         (r"(?m)^JUNIT report written to", "Отчёт JUnit сохранён в"),
@@ -47,10 +45,7 @@ def localize(output: str) -> str:
     )
     localized = re.sub(
         r"(?m)^\s*(\d+) passed, (\d+) failed(?:, (\d+) skipped)?$",
-        lambda match: (
-            f"Успешно: {match[1]}; ошибок: {match[2]}; "
-            f"пропущено: {match[3] or '0'}"
-        ),
+        lambda match: f"Успешно: {match[1]}; ошибок: {match[2]}; пропущено: {match[3] or '0'}",
         localized,
     )
     return localized
