@@ -16,7 +16,7 @@ BASE_REF ?= main
 PYTHON ?= python3
 LOCAL_UID ?= $(shell id -u)
 LOCAL_GID ?= $(shell id -g)
-export LOCAL_UID LOCAL_GID
+export LOCAL_UID LOCAL_GID PROJECT_NAME BASE_REF
 BACKUP ?=
 TARGET_DATABASE ?=
 TARGET_DATABASE_URL ?=
@@ -188,24 +188,7 @@ check-branch-diff:
 	git diff --check "$$base...HEAD"
 
 verify:
-	@set -eu; \
-	cleanup() { echo '==> Очистка изолированного тестового Compose-проекта; pnpm-кэш $(PNPM_STORE_VOLUME) сохраняется'; $(MAKE) test-clean TEST_RUN_ID="$(TEST_RUN_ID)"; }; \
-	trap cleanup EXIT HUP INT TERM; \
-	echo '==> Подготовка изолированного Docker-контура'; $(MAKE) check-test-environment TEST_RUN_ID="$(TEST_RUN_ID)"; \
-	echo '==> Политика контейнеров'; $(MAKE) container-check; \
-	echo '==> Проверка lock-файлов'; $(MAKE) lock-check TEST_RUN_ID="$(TEST_RUN_ID)"; \
-	echo '==> Проверка качества, включая SAST Bandit'; $(MAKE) quality TEST_RUN_ID="$(TEST_RUN_ID)"; \
-	echo '==> Автоматические тесты'; $(MAKE) test TEST_RUN_ID="$(TEST_RUN_ID)"; \
-	echo '==> Мутационная проверка'; $(MAKE) mutation TEST_RUN_ID="$(TEST_RUN_ID)"; \
-	echo '==> Проверка миграций'; $(MAKE) migration-check TEST_RUN_ID="$(TEST_RUN_ID)"; \
-	echo '==> Проверка backup/restore'; $(MAKE) backup-restore-check TEST_RUN_ID="$(TEST_RUN_ID)"; \
-	echo '==> Контейнерный smoke-сценарий'; $(MAKE) container-smoke TEST_RUN_ID="$(TEST_RUN_ID)"; \
-	echo '==> Проверка очистки тестового проекта'; $(MAKE) check-test-project-clean TEST_RUN_ID="$(TEST_RUN_ID)"; \
-	echo '==> Проверка whitespace рабочей копии'; $(MAKE) check-working-tree-diff; \
-	echo '==> Проверка whitespace веточной разницы'; $(MAKE) check-branch-diff; \
-	cleanup; \
-	trap - EXIT HUP INT TERM
-	@echo '==> Проверки успешно завершены; приложение автоматически не запускается'
+	@$(PYTHON) -m scripts.verify
 
 # Python 3 нужен на хосте для оркестрации Docker и проверки политики.
 prepare-container-dirs:
