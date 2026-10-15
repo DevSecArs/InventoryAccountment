@@ -50,7 +50,7 @@ RUN npm install --global pnpm@11.19.0
 
 FROM frontend-base AS frontend
 
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 # Copy source paths explicitly: Windows pnpm links in node_modules may be unreadable.
 COPY frontend/src ./src
@@ -61,11 +61,12 @@ CMD ["pnpm", "exec", "vite", "--host", "0.0.0.0", "--port", "5173"]
 
 FROM frontend-base AS frontend-test
 
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 # Copy source paths explicitly: Windows pnpm links in node_modules may be unreadable.
 COPY frontend/src ./src
 COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./
 COPY frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/.gitignore frontend/README.md ./
+
 COPY scripts/localize_test_output.mjs /scripts/localize_test_output.mjs
 CMD ["sh", "-lc", "node /scripts/localize_test_output.mjs -- pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && node /scripts/localize_test_output.mjs -- pnpm test:run"]
 

@@ -32,8 +32,8 @@ MUTATIONS = (
         "entities/receipt.py",
         "if not value > 0:",
         "if not value >= 0:",
-        "tests/integration/test_receipts.py::test_receipt_rejects_invalid_items",
-        "AssertionError",
+        "tests/unit/test_validation.py::test_receipt_quantity_zero_rejected",
+        "DID NOT RAISE",
     ),
     CriticalMutation(
         "проверка уникальности материала отключена",

@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pytest
@@ -83,3 +84,13 @@ def test_receipt_items_reject_duplicate_material_ids_before_database_access() ->
     ]
     with pytest.raises(ValueError, match="Материал повторяется"):
         _items(MagicMock(spec=Session), items)
+
+
+def test_receipt_quantity_zero_rejected() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        ReceiptItemPayload(
+            material_id="test-material",
+            quantity=Decimal(0),
+        )
+
+    assert any(error["type"] == "quantity_not_positive" for error in exc_info.value.errors())
