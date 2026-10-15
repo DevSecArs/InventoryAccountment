@@ -121,7 +121,11 @@ export async function apiBlobRequest(path: string, init: RequestInit = {}) {
     } catch {
       body = { message: 'Сервер вернул ответ в неизвестном формате' };
     }
-    throw new ApiError(response.status, body, response.headers.get('X-Request-ID') ?? requestId);
+    throw new ApiError(
+      response.status,
+      body,
+      response.headers.get('X-Request-ID') ?? requestId,
+    );
   }
   return response.blob();
 }

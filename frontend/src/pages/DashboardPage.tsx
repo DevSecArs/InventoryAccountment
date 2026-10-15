@@ -1,4 +1,10 @@
-import { ArrowRight, Boxes, ClipboardCheck, Database, Truck } from 'lucide-react';
+import {
+  ArrowRight,
+  Boxes,
+  ClipboardCheck,
+  Database,
+  Truck,
+} from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
@@ -11,7 +17,12 @@ const overviewItems = [
     detail: 'Единицы, материалы, поставщики',
     icon: Boxes,
   },
-  { label: 'Поступления', value: '→', detail: 'Черновики и проведение', icon: Truck },
+  {
+    label: 'Поступления',
+    value: '→',
+    detail: 'Черновики и проведение',
+    icon: Truck,
+  },
 ];
 
 export function DashboardPage() {

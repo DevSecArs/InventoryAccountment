@@ -1,9 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import {
-  Database,
-  HeartPulse,
-  ShieldCheck,
-} from 'lucide-react';
+import { Database, HeartPulse, ShieldCheck } from 'lucide-react';
 
 import { getLiveness, getReadiness } from '../../api/health';
 import { ApiErrorNotice } from '../../components/ApiErrorNotice';
