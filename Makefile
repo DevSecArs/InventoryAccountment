@@ -91,7 +91,7 @@ quality:
 	@echo '==> Backend: собираю актуальный test-образ для статических проверок'
 	@$(TEST_COMPOSE) build --progress=plain app
 	@echo '==> Backend: запускаю Ruff и mypy без зависимостей Compose'
-	@$(TEST_COMPOSE) run --rm --no-deps --user root app sh -c 'mkdir -p reports && ruff format --check --no-cache app tests scripts && ruff check --no-cache app tests scripts && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts'
+	@$(TEST_COMPOSE) run --rm --no-deps --user root app sh -c 'mkdir -p reports && echo "==> Ruff: проверка форматирования" && ruff format --check --no-cache app tests scripts && echo "==> Ruff: статический анализ" && ruff check --no-cache app tests scripts && echo "==> mypy: проверка типов" && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts'
 	@echo '==> SAST: начинаю статический анализ безопасности; тип — Bandit'
 	@set +e; \
 	if $(TEST_COMPOSE) run --rm --no-deps --user root app bandit -q -r app scripts -lll -f json -o reports/bandit.json; then sast_status=0; else sast_status=$$?; fi; \

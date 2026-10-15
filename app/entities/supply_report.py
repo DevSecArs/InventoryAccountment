@@ -6,9 +6,11 @@ import csv
 from datetime import datetime
 from decimal import Decimal
 from io import StringIO
+from typing import Any, cast
 
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
+from sqlalchemy.engine import Result
 from sqlalchemy.orm import Session
 
 from app.entities.material import Material
@@ -61,7 +63,7 @@ def validate_period(date_from: datetime, date_to: datetime) -> None:
 
 def _base_query(
     date_from: datetime, date_to: datetime, supplier_id: str | None, material_id: str | None
-):
+) -> Select[Any]:
     query = (
         select(
             Receipt.id.label("receipt_id"),
@@ -94,8 +96,8 @@ def _base_query(
     return query
 
 
-def _mapping_rows(result: object) -> list[dict[str, object]]:
-    return [dict(row) for row in result.mappings().all()]  # type: ignore[union-attr]
+def _mapping_rows(result: Result[Any]) -> list[dict[str, object]]:
+    return [dict(row) for row in result.mappings().all()]
 
 
 def get_supply_report(
@@ -199,6 +201,6 @@ def render_csv(rows: list[dict[str, object]]) -> str:
     for row in rows:
         rendered = {key: _safe_csv(row[key]) for key in CSV_FIELDS}
         rendered["quantity"] = format(row["quantity"], "f")
-        rendered["received_at"] = row["received_at"].isoformat()  # type: ignore[union-attr]
+        rendered["received_at"] = cast(datetime, row["received_at"]).isoformat()
         writer.writerow([rendered[key] for key in CSV_FIELDS])
     return "\ufeff" + buffer.getvalue()

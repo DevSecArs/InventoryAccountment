@@ -2,6 +2,7 @@
 
 import csv
 from io import StringIO
+from typing import cast
 
 from fastapi.testclient import TestClient
 
@@ -53,7 +54,7 @@ def _receipt(
             client.post(f"/api/v1/receipts/{receipt['id']}/post", headers=headers).status_code
             == 200
         )
-    return receipt
+    return cast(dict[str, object], receipt)
 
 
 def test_report_period_filters_totals_and_csv(

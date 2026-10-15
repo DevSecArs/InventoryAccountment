@@ -1,5 +1,7 @@
 """Интеграционные проверки согласованного синхронного проведения."""
 
+from typing import cast
+
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
@@ -34,7 +36,7 @@ def _draft(client: TestClient, headers: dict[str, str]) -> dict[str, object]:
         headers=headers,
     )
     assert response.status_code == 201
-    return response.json()
+    return cast(dict[str, object], response.json())
 
 
 def test_post_is_atomic_idempotent_and_records_one_history_entry(
@@ -118,9 +120,12 @@ def test_concurrent_post_records_only_one_transition(
         with TestClient(app, base_url="https://testserver") as independent_client:
             independent_client.cookies.update(client.cookies)
             barrier.wait()
-            return independent_client.post(
-                f"/api/v1/receipts/{draft['id']}/post", headers=headers
-            ).status_code
+            return cast(
+                int,
+                independent_client.post(
+                    f"/api/v1/receipts/{draft['id']}/post", headers=headers
+                ).status_code,
+            )
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [executor.submit(post) for _ in range(2)]
