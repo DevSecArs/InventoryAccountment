@@ -104,8 +104,8 @@ quality:
 	@echo '==> Frontend: подготавливаю образ и pnpm-кэш для проверок качества'
 	@$(MAKE) frontend-test-image
 	@$(MAKE) ensure-pnpm-store
-	@echo '==> Frontend: запускаю форматирование, lint, typecheck и audit'
-	@docker run --rm -v "$(PNPM_STORE_VOLUME):/pnpm/store" -v "$(CURDIR)/reports:/reports" "$(FRONTEND_TEST_IMAGE)" sh -lc 'pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && pnpm quality && pnpm audit --audit-level=high --json > /reports/pnpm-audit.json'
+	@echo '==> Frontend: запускаю форматирование, lint и typecheck'
+	@docker run --rm -v "$(PNPM_STORE_VOLUME):/pnpm/store" -v "$(CURDIR)/reports:/reports" "$(FRONTEND_TEST_IMAGE)" sh -lc 'pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && pnpm quality && echo "==> Frontend: проверяю уязвимости зависимостей (порог отказа: High)" && if pnpm audit --audit-level=high --json > /reports/pnpm-audit.json; then echo "Frontend audit: уязвимостей уровня High и Critical не найдено."; else audit_status=$$?; echo "ОШИБКА: аудит frontend-зависимостей завершился отказом." >&2; node -e "const r=JSON.parse(require(\"node:fs\").readFileSync(\"/reports/pnpm-audit.json\",\"utf8\"));const v=r.metadata&&r.metadata.vulnerabilities;if(!v){console.error(\"Не удалось получить сводку уязвимостей; проверьте JSON-отчёт.\")}else{console.error(\"Найдено: High=\"+(v.high||0)+\", Critical=\"+(v.critical||0)+\".\");for(const [name,item] of Object.entries(r.vulnerabilities||{})){if(item.severity===\"high\"||item.severity===\"critical\"){console.error(\"Пакет: \"+name+\" (\"+item.severity+\").\");for(const via of item.via||[]){if(typeof via===\"object\")console.error(\"  Причина: \"+via.title+(via.url?\" — \"+via.url:\"\"));}}}}"; echo "Полный отчёт сохранён: reports/pnpm-audit.json"; exit "$$audit_status"; fi'
 	@$(MAKE) secret-scan
 
 secret-scan:
