@@ -80,7 +80,6 @@ services:
     environment:
       PGCONNECT_TIMEOUT: "10"
       APP_ENV: test
-      PGCONNECT_TIMEOUT: "10"
       PGHOST: db
       PGPORT: "5432"
       PGUSER: inventory_test_app
