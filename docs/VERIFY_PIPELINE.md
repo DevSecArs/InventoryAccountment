@@ -9,6 +9,10 @@
 
 Linux: `make verify`. Windows, из PowerShell: `python -m scripts.verify`.
 Нужны Python 3.11+, Git и Docker Compose. Предварительный `make setup` не нужен.
+Тестовая команда использует `docker compose run --rm`: у `run` нет параметра
+`--no-build`. Повторная сборка исключена отсутствием `build` в сформированной
+конфигурации; загрузка образов — `pull_policy: never` и закреплёнными image ID.
+Параметр `--no-build` сохраняется для финального `docker compose up`.
 Путь к внешним настройкам передаётся только через `ENV_FILE`, включая пути
 с пробелами. Тестовые проекты не читают рабочий env-файл и имеют отдельные тома.
 
@@ -21,6 +25,10 @@ Linux: `make verify`. Windows, из PowerShell: `python -m scripts.verify`.
    Bandit, lock-check, audit Python/Node, Frontend quality/build,
    критические мутации, миграционная матрица. Lock-файл pnpm проверяется
    установкой с --frozen-lockfile во время сборки, без повторной установки.
+   Зависимости устанавливаются от app/node, исходники копируются с нужным
+   владельцем через COPY --chown. Рекурсивный chown дерева зависимостей не нужен.
+   Кэши сборки общего образа разделены по UID/GID; смена пользователя не требует
+   удаления чужого кэша. Ускорение зависит от диска, сети и наличия кэша.
 4. Изолированный запуск рабочих image ID: UID, процессы, healthcheck,
    HTTP smoke, backup/restore и пересоздание PostgreSQL с сохранением схемы.
 5. Из общего образа инструментов: Gitleaks и Trivy. Каждый уникальный image ID

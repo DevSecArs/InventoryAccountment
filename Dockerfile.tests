@@ -12,27 +12,28 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && npm install --global pnpm@11.19.0 \
     && python -m pip install --no-cache-dir uv==0.5.29
 
-WORKDIR /app
-ENV PATH="/app/.venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
-COPY pyproject.toml uv.lock README.md ./
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --extra dev --no-install-project
-COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./frontend/
-RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm --dir frontend install --frozen-lockfile
-COPY app ./app
-COPY alembic ./alembic
-COPY alembic.ini Makefile ./
-COPY tests ./tests
-COPY scripts ./scripts
-COPY frontend/src ./frontend/src
-COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./frontend/
-COPY frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/.gitignore frontend/README.md ./frontend/
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --extra dev
-COPY --from=gitleaks /usr/bin/gitleaks /usr/local/bin/gitleaks
-COPY --from=trivy /usr/local/bin/trivy /usr/local/bin/trivy
 ARG LOCAL_UID=1000
 ARG LOCAL_GID=1000
 RUN test "$LOCAL_UID" -gt 0 && test "$LOCAL_GID" -gt 0 && \
     groupadd --gid "$LOCAL_GID" app && useradd --uid "$LOCAL_UID" --gid app --create-home app && \
-    mkdir -p /app/reports && chown -R app:app /app
+    mkdir -p /app/reports && chown app:app /app /app/reports
+ENV HOME=/home/app
 USER app
+WORKDIR /app
+ENV PATH="/app/.venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+COPY --chown=app:app pyproject.toml uv.lock README.md ./
+RUN --mount=type=cache,id=inventory-uv-${LOCAL_UID}-${LOCAL_GID},target=/home/app/.cache/uv,uid=${LOCAL_UID},gid=${LOCAL_GID} uv sync --frozen --extra dev --no-install-project
+COPY --chown=app:app frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./frontend/
+RUN --mount=type=cache,id=inventory-pnpm-${LOCAL_UID}-${LOCAL_GID},target=/home/app/.local/share/pnpm/store,uid=${LOCAL_UID},gid=${LOCAL_GID} pnpm --dir frontend install --frozen-lockfile
+COPY --chown=app:app app ./app
+COPY --chown=app:app alembic ./alembic
+COPY --chown=app:app alembic.ini Makefile ./
+COPY --chown=app:app tests ./tests
+COPY --chown=app:app scripts ./scripts
+COPY --chown=app:app frontend/src ./frontend/src
+COPY --chown=app:app frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./frontend/
+COPY --chown=app:app frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/.gitignore frontend/README.md ./frontend/
+RUN --mount=type=cache,id=inventory-uv-${LOCAL_UID}-${LOCAL_GID},target=/home/app/.cache/uv,uid=${LOCAL_UID},gid=${LOCAL_GID} uv sync --frozen --extra dev
+COPY --from=gitleaks /usr/bin/gitleaks /usr/local/bin/gitleaks
+COPY --from=trivy /usr/local/bin/trivy /usr/local/bin/trivy
 CMD ["make", "-f", "scripts/test-runner.mk", "test"]

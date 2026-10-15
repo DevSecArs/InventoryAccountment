@@ -114,6 +114,15 @@ def test_check_failure_cleans_only_unique_project(
         verify.checks(tmp_path, {"db": "sha256:db", "tests": "sha256:tests"}, {})
     project = config.call_args.args[1]["COMPOSE_PROJECT_NAME"]
     assert project.startswith("inventory-verify-")
+    invocation = execute.call_args_list[0].args[0]
+    assert "run" in invocation
+    assert "--no-build" not in invocation
+    assert "--build" not in invocation
+    manifest = json.loads((tmp_path / "tests.json").read_text())
+    for name, image in {"db": "sha256:db", "tests": "sha256:tests"}.items():
+        assert manifest["services"][name]["image"] == image
+        assert manifest["services"][name]["pull_policy"] == "never"
+        assert "build" not in manifest["services"][name]
     cleanup = execute.call_args.args[0]
     assert cleanup[cleanup.index("-p") + 1] == project
     assert cleanup[-3:] == ["down", "--volumes", "--remove-orphans"]

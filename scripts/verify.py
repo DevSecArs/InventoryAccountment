@@ -120,7 +120,6 @@ def checks(directory: Path, images: dict[str, str], env: dict[str, str]) -> None
             + [
                 "run",
                 "--rm",
-                "--no-build",
                 "-e",
                 "CI=true",
                 "tests",

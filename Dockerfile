@@ -55,18 +55,18 @@ ARG LOCAL_UID=1000
 ARG LOCAL_GID=1000
 RUN test "$LOCAL_UID" -gt 0 && test "$LOCAL_GID" -gt 0 && \
     groupmod -g "$LOCAL_GID" node && usermod -u "$LOCAL_UID" -g "$LOCAL_GID" node && \
-    mkdir -p /pnpm/store && chown -R node:node /pnpm /app /home/node
+    mkdir -p /pnpm/store && chown node:node /pnpm /pnpm/store /app /app/frontend /home/node
 ENV HOME=/home/node
+USER node
 
 FROM frontend-base AS frontend
 
-COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
+COPY --chown=node:node frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 # Copy source paths explicitly: Windows pnpm links in node_modules may be unreadable.
-COPY frontend/src ./src
-COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./
-COPY frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/.gitignore frontend/README.md ./
-RUN chown -R node:node /app/frontend
+COPY --chown=node:node frontend/src ./src
+COPY --chown=node:node frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./
+COPY --chown=node:node frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/.gitignore frontend/README.md ./
 USER node
 EXPOSE 5173
 STOPSIGNAL SIGTERM
@@ -74,14 +74,13 @@ CMD ["node", "node_modules/vite/bin/vite.js", "--host", "0.0.0.0", "--port", "51
 
 FROM frontend-base AS frontend-test
 
-COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
+COPY --chown=node:node frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 # Copy source paths explicitly: Windows pnpm links in node_modules may be unreadable.
-COPY frontend/src ./src
-COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./
-COPY frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/.gitignore frontend/README.md ./
+COPY --chown=node:node frontend/src ./src
+COPY --chown=node:node frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./
+COPY --chown=node:node frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/.gitignore frontend/README.md ./
 
 COPY scripts/localize_test_output.mjs /scripts/localize_test_output.mjs
-RUN chown -R node:node /app/frontend
 USER node
 CMD ["sh", "-lc", "node /scripts/localize_test_output.mjs -- pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && node /scripts/localize_test_output.mjs -- pnpm test:run"]
 
