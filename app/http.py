@@ -17,8 +17,8 @@ from sqlalchemy.orm import Session
 from app.entities.routers import (
     auth_router,
     material_router,
-    report_router,
     receipt_router,
+    report_router,
     supplier_router,
     unit_router,
 )

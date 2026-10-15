@@ -32,8 +32,8 @@ def main() -> int:
         findings = report["results"]
         scan_errors = report.get("errors", [])
         if not isinstance(findings, list) or not isinstance(scan_errors, list):
-            raise ValueError("поля results/errors в отчёте должны быть списками")
-    except (OSError, json.JSONDecodeError, KeyError, ValueError) as error:
+            raise TypeError("поля results/errors в отчёте должны быть списками")
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
         print(f"Результат: отчёт не удалось прочитать ({error}).")
         print(f"Отчёт: {report_path}")
         print("+------------------------------------------------+")

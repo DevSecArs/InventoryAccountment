@@ -1,7 +1,5 @@
-from typing import Any
-
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import Response as FastAPIResponse
@@ -12,8 +10,8 @@ from app.entities import auth as auth_service
 from app.entities import material as material_service
 from app.entities import receipt as receipt_service
 from app.entities import receipt_status_history as receipt_history_service
-from app.entities import supply_report as supply_report_service
 from app.entities import supplier as supplier_service
+from app.entities import supply_report as supply_report_service
 from app.entities import unit as unit_service
 from app.postgresql import DatabaseSession
 

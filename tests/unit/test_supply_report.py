@@ -1,9 +1,9 @@
 """Чистые unit-проверки периода и CSV-экспорта."""
 
-from datetime import datetime, timezone
+import csv
+from datetime import UTC, datetime
 from decimal import Decimal
 from io import StringIO
-import csv
 
 import pytest
 
@@ -14,7 +14,7 @@ def _row(**overrides: object) -> dict[str, object]:
     value: dict[str, object] = {
         "receipt_id": "receipt-1",
         "document_number": "DOC-1",
-        "received_at": datetime(2026, 1, 1, 9, 30, tzinfo=timezone.utc),
+        "received_at": datetime(2026, 1, 1, 9, 30, tzinfo=UTC),
         "supplier_id": "supplier-1",
         "supplier_name": 'Поставщик, "А"\nНовый',
         "material_id": "material-1",
@@ -32,9 +32,9 @@ def _row(**overrides: object) -> dict[str, object]:
 @pytest.mark.parametrize(
     ("date_from", "date_to"),
     [
-        (datetime(2026, 1, 1), datetime(2026, 1, 2, tzinfo=timezone.utc)),
-        (datetime(2026, 1, 2, tzinfo=timezone.utc), datetime(2026, 1, 1, tzinfo=timezone.utc)),
-        (datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 1, 1, tzinfo=timezone.utc)),
+        (datetime.fromisoformat("2026-01-01"), datetime(2026, 1, 2, tzinfo=UTC)),
+        (datetime(2026, 1, 2, tzinfo=UTC), datetime(2026, 1, 1, tzinfo=UTC)),
+        (datetime(2026, 1, 1, tzinfo=UTC), datetime(2026, 1, 1, tzinfo=UTC)),
     ],
 )
 def test_period_requires_aware_and_forward_datetimes(
