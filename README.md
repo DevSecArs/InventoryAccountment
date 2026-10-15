@@ -76,13 +76,15 @@ make down или docker compose down сохраняют данные. Для о�
 Флаг DOCKER удалён: все команды контейнерные. run/up/status/down/migrate,
 backup/restore работают с приложением; test/quality/verify/migration-check,
 mutation/backup-restore-check используют отдельный тестовый Compose-проект.
-make test-clean очищает только тестовые ресурсы. make verify не запускает
-рабочее приложение после завершения. Полный перечень: [GUIDE.md](GUIDE.md).
+make test-clean очищает только тестовые ресурсы. После всех успешных проверок
+make verify запускает рабочее приложение из проверенных image ID без пересборки.
+При отказе проверки рабочая среда не изменяется. Полный перечень: [GUIDE.md](GUIDE.md).
 
 Обязательная проверка — make verify. Она включает lock-check, качество,
 тесты с покрытием 80%, mutation, миграции, backup/restore, smoke, сканирование
 реального image ID и проверки Git. Frontend coverage-порог пока не настроен.
 CI запускает те же команды и сохраняет reports/ при отказе и успехе.
+Однократная сборка и порядок запуска описаны в [VERIFY_PIPELINE.md](docs/VERIFY_PIPELINE.md).
 Успешный CI, релиз и человеческая приёмка не следуют из наличия конфигурации.
 
 Для Windows без GNU Make остаётся [Linux test-образ](docs/UNIX_TESTS.md).
