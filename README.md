@@ -100,3 +100,5 @@ CI запускает те же команды и сохраняет reports/ п
 Make и deploy учитывают переменную автоматически. В прямых рабочих командах
 Compose добавляйте `--env-file "$ENV_FILE"` (Linux) или
 `--env-file "$env:ENV_FILE"` (PowerShell), если переменная задана.
+
+[Миграции, backup/restore и ограничения ресурсов](docs/DATABASE_OPERATIONS.md) — команды для Make, Linux и PowerShell.

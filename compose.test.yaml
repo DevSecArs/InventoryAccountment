@@ -1,5 +1,9 @@
 services:
   db:
+    cpus: "1.0"
+    mem_limit: 1g
+    memswap_limit: 1g
+    pids_limit: 256
     image: postgres:16.4-alpine
     stop_grace_period: 60s
     environment:
@@ -15,12 +19,17 @@ services:
       - postgres_test_data:/var/lib/postgresql/data
 
   app:
+    cpus: "2.0"
+    mem_limit: 2g
+    memswap_limit: 2g
+    pids_limit: 256
     init: true
     stop_grace_period: 45s
     build:
       context: .
       target: test
     environment:
+      PGCONNECT_TIMEOUT: "10"
       APP_ENV: test
       APP_DEBUG: "false"
       DATABASE_URL: postgresql+psycopg2://inventory_test_app:inventory_test_password@db:5432/inventory_test
@@ -39,6 +48,10 @@ services:
       retries: 12
 
   frontend:
+    cpus: "1.0"
+    mem_limit: 768m
+    memswap_limit: 768m
+    pids_limit: 128
     init: true
     stop_grace_period: 15s
     build:
@@ -58,10 +71,16 @@ services:
       retries: 12
 
   pg-tools:
+    cpus: "1.0"
+    mem_limit: 512m
+    memswap_limit: 512m
+    pids_limit: 128
     image: postgres:16.4-alpine
     profiles: ["tools"]
     environment:
+      PGCONNECT_TIMEOUT: "10"
       APP_ENV: test
+      PGCONNECT_TIMEOUT: "10"
       PGHOST: db
       PGPORT: "5432"
       PGUSER: inventory_test_app

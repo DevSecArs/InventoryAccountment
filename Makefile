@@ -44,7 +44,7 @@ status:
 	@$(COMPOSE) logs --tail 50
 
 migrate:
-	@$(COMPOSE) run --rm migrate
+	@$(COMPOSE) run --rm --build migrate
 
 check-test-environment:
 	@test -n "$(TEST_RUN_ID)" || (echo "TEST_RUN_ID не должен быть пустым" >&2; exit 2)
@@ -71,7 +71,7 @@ test-in-container:
 	@$(MAKE) frontend-test-image
 	@$(MAKE) ensure-pnpm-store
 	@echo '==> Frontend: запускаю тесты из проектного образа'
-	@docker run --rm -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)" sh -lc 'node /scripts/localize_test_output.mjs -- pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && node /scripts/localize_test_output.mjs -- pnpm test:run'
+	@docker run --rm --cpus=2 --memory=2g --memory-swap=2g --pids-limit=256 -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)" sh -lc 'node /scripts/localize_test_output.mjs -- pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && node /scripts/localize_test_output.mjs -- pnpm test:run'
 
 frontend-test-image:
 	@echo '==> Frontend: собираю образ $(FRONTEND_TEST_IMAGE)'
@@ -105,7 +105,7 @@ quality:
 	@$(MAKE) frontend-test-image
 	@$(MAKE) ensure-pnpm-store
 	@echo '==> Frontend: запускаю форматирование, lint и typecheck'
-	@docker run --rm -v "$(PNPM_STORE_VOLUME):/pnpm/store" -v "$(CURDIR)/reports:/reports" "$(FRONTEND_TEST_IMAGE)" sh -lc 'pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && pnpm quality && echo "==> Frontend: проверяю уязвимости зависимостей (порог отказа: High)" && if pnpm audit --audit-level=high --json > /reports/pnpm-audit.json; then echo "Frontend audit: уязвимостей уровня High и Critical не найдено."; else audit_status=$$?; echo "ОШИБКА: аудит frontend-зависимостей завершился отказом." >&2; node -e "const r=JSON.parse(require(\"node:fs\").readFileSync(\"/reports/pnpm-audit.json\",\"utf8\"));const v=r.metadata&&r.metadata.vulnerabilities;if(!v){console.error(\"Не удалось получить сводку уязвимостей; проверьте JSON-отчёт.\")}else{console.error(\"Найдено: High=\"+(v.high||0)+\", Critical=\"+(v.critical||0)+\".\");for(const [name,item] of Object.entries(r.vulnerabilities||{})){if(item.severity===\"high\"||item.severity===\"critical\"){console.error(\"Пакет: \"+name+\" (\"+item.severity+\").\");for(const via of item.via||[]){if(typeof via===\"object\")console.error(\"  Причина: \"+via.title+(via.url?\" — \"+via.url:\"\"));}}}}"; echo "Полный отчёт сохранён: reports/pnpm-audit.json"; exit "$$audit_status"; fi'
+	@docker run --rm --cpus=2 --memory=2g --memory-swap=2g --pids-limit=256 -v "$(PNPM_STORE_VOLUME):/pnpm/store" -v "$(CURDIR)/reports:/reports" "$(FRONTEND_TEST_IMAGE)" sh -lc 'pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && pnpm quality && echo "==> Frontend: проверяю уязвимости зависимостей (порог отказа: High)" && if pnpm audit --audit-level=high --json > /reports/pnpm-audit.json; then echo "Frontend audit: уязвимостей уровня High и Critical не найдено."; else audit_status=$$?; echo "ОШИБКА: аудит frontend-зависимостей завершился отказом." >&2; node -e "const r=JSON.parse(require(\"node:fs\").readFileSync(\"/reports/pnpm-audit.json\",\"utf8\"));const v=r.metadata&&r.metadata.vulnerabilities;if(!v){console.error(\"Не удалось получить сводку уязвимостей; проверьте JSON-отчёт.\")}else{console.error(\"Найдено: High=\"+(v.high||0)+\", Critical=\"+(v.critical||0)+\".\");for(const [name,item] of Object.entries(r.vulnerabilities||{})){if(item.severity===\"high\"||item.severity===\"critical\"){console.error(\"Пакет: \"+name+\" (\"+item.severity+\").\");for(const via of item.via||[]){if(typeof via===\"object\")console.error(\"  Причина: \"+via.title+(via.url?\" — \"+via.url:\"\"));}}}}"; echo "Полный отчёт сохранён: reports/pnpm-audit.json"; exit "$$audit_status"; fi'
 	@$(MAKE) secret-scan
 
 secret-scan:
@@ -155,7 +155,7 @@ lock-check:
 	@$(MAKE) frontend-test-image
 	@$(MAKE) ensure-pnpm-store
 	@echo '==> Lock-файлы: проверяю frontend-зависимости'
-	@docker run --rm -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)" pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store
+	@docker run --rm --cpus=2 --memory=2g --memory-swap=2g --pids-limit=256 -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)" pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store
 
 container-smoke:
 	@$(MAKE) check-test-environment

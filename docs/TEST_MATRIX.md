@@ -61,3 +61,8 @@ Frontend coverage и браузерные E2E не настроены. Успе�
 Жизненный цикл API: tests/unit/test_application_lifecycle.py проверяет lifespan,
 освобождение пула и фабрики сессий, а в Linux — настоящий SIGTERM во время
 HTTP-запроса к Uvicorn с проверкой завершения запроса и shutdown.
+
+Backup: tests/unit/test_backup_publication.py проверяет уникальность имён при
+одинаковой временной метке и отсутствие опубликованного дампа при сбое pg_dump.
+backup_restore_check.sh дополнительно проверяет отказ для повреждённого дампа
+и существующей цели без разрешения.

@@ -2,7 +2,7 @@ import os
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 from alembic import context
 from app.config import settings
@@ -49,7 +49,10 @@ def run_migrations_online() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-    with connectable.connect() as connection:
+    with connectable.begin() as connection:
+        # Один мигратор на БД; lock_timeout ограничивает ожидание блокировок.
+        connection.execute(text("SET LOCAL lock_timeout = '60s'"))
+        connection.execute(text("SELECT pg_advisory_xact_lock(731204, 1)"))
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()

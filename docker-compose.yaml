@@ -8,6 +8,7 @@ x-backend: &backend
   environment:
     APP_ENV: development
     APP_DEBUG: "false"
+    PGCONNECT_TIMEOUT: "10"
     POSTGRES_HOST: db
     POSTGRES_USER: ${POSTGRES_USER:-inventory_app}
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_inventory_password}
@@ -15,6 +16,10 @@ x-backend: &backend
 
 services:
   db:
+    cpus: "1.0"
+    mem_limit: 1g
+    memswap_limit: 1g
+    pids_limit: 256
     image: postgres:16.4-alpine
     stop_grace_period: 60s
     environment:
@@ -30,6 +35,10 @@ services:
       retries: 30
 
   migrate:
+    cpus: "1.0"
+    mem_limit: 512m
+    memswap_limit: 512m
+    pids_limit: 128
     <<: *backend
     command: ["alembic", "upgrade", "head"]
     depends_on:
@@ -38,6 +47,10 @@ services:
     restart: "no"
 
   app:
+    cpus: "1.0"
+    mem_limit: 512m
+    memswap_limit: 512m
+    pids_limit: 128
     <<: *backend
     init: true
     stop_grace_period: 45s
@@ -55,6 +68,10 @@ services:
       retries: 30
 
   frontend:
+    cpus: "1.0"
+    mem_limit: 768m
+    memswap_limit: 768m
+    pids_limit: 128
     image: ${COMPOSE_PROJECT_NAME:-inventory-compose}-frontend:local
     init: true
     stop_grace_period: 15s
@@ -75,9 +92,14 @@ services:
       retries: 30
 
   pg-tools:
+    cpus: "1.0"
+    mem_limit: 512m
+    memswap_limit: 512m
+    pids_limit: 128
     image: postgres:16.4-alpine
     profiles: ["tools"]
     environment:
+      PGCONNECT_TIMEOUT: "10"
       PGHOST: db
       PGPORT: "5432"
       PGUSER: ${POSTGRES_USER:-inventory_app}

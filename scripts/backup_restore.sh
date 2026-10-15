@@ -1,6 +1,8 @@
 #!/bin/sh
 
 set -eu
+umask 077
+export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-10}"
 
 fail() {
     echo "$1" >&2
@@ -8,6 +10,7 @@ fail() {
 }
 
 safe_database_name() {
+    [ "${#1}" -le 63 ] || return 1
     case "$1" in
         '' | *[!A-Za-z0-9_]* | [0-9]*) return 1 ;;
         *) return 0 ;;
@@ -33,19 +36,26 @@ create_backup() {
     backup_dir="$1"
     safe_database_name "$PGDATABASE" || fail "Имя исходной БД содержит недопустимые символы"
     mkdir -p "$backup_dir"
+    # Уникальный каталог исключает коллизии одновременных запусков.
+    staging_dir="$(mktemp -d "$backup_dir/.backup-XXXXXXXX")"
+    cleanup_backup() { rm -rf "$staging_dir"; }
+    trap cleanup_backup EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' HUP TERM
     timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-    dump_file="$backup_dir/${PGDATABASE}_${timestamp}.dump"
+    suffix="${staging_dir##*/.backup-}"
+    dump_file="$backup_dir/${PGDATABASE}_${timestamp}_${suffix}.dump"
     metadata_file="${dump_file}.metadata"
-    revision="$(psql --tuples-only --no-align --command 'SELECT version_num FROM alembic_version')"
+    revision="$(psql -X --set ON_ERROR_STOP=1 --tuples-only --no-align --command 'SELECT version_num FROM alembic_version')"
 
     [ -n "$revision" ] || fail "Не удалось определить Alembic revision"
-    pg_dump --format=custom --file="$dump_file" --dbname="$PGDATABASE"
-    pg_restore --list "$dump_file" >/dev/null
+    pg_dump --format=custom --file="$staging_dir/data.dump" --dbname="$PGDATABASE"
+    pg_restore --list "$staging_dir/data.dump" >/dev/null
 
-    checksum="$(sha256sum "$dump_file" | awk '{print $1}')"
-    size_bytes="$(wc -c < "$dump_file" | tr -d ' ')"
+    checksum="$(sha256sum "$staging_dir/data.dump" | awk '{print $1}')"
+    size_bytes="$(wc -c < "$staging_dir/data.dump" | tr -d ' ')"
     major="$(postgres_major)"
-    cat > "$metadata_file" <<EOF
+    cat > "$staging_dir/data.metadata" <<EOF
 created_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 source_database=$PGDATABASE
 alembic_revision=$revision
@@ -53,6 +63,10 @@ size_bytes=$size_bytes
 sha256=$checksum
 postgres_major=$major
 EOF
+
+    # Метаданные публикуются первыми, готовый дамп — последним атомарным rename.
+    mv "$staging_dir/data.metadata" "$metadata_file"
+    mv "$staging_dir/data.dump" "$dump_file"
 
     echo "BACKUP_PATH=$dump_file"
     echo "BACKUP_CREATED_AT_UTC=$(metadata_value created_at_utc "$metadata_file")"
@@ -91,7 +105,9 @@ restore_backup() {
             dropdb --if-exists "$target_database" >/dev/null 2>&1 || true
         fi
     }
-    trap cleanup_failed_restore EXIT HUP INT TERM
+    trap cleanup_failed_restore EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' HUP TERM
 
     if database_exists "$target_database"; then
         [ "${RESTORE_EXISTING:-0}" = "1" ] || fail "Целевая БД существует; укажите RESTORE_EXISTING=1 для явной замены"
@@ -106,7 +122,7 @@ restore_backup() {
 
     createdb --template=template0 "$target_database"
     created_target=1
-    pg_restore --exit-on-error --no-owner --no-privileges --dbname="$target_database" "$backup_file"
+    pg_restore --single-transaction --exit-on-error --no-owner --no-privileges --dbname="$target_database" "$backup_file"
     restored_revision="$(psql --dbname="$target_database" --tuples-only --no-align --command 'SELECT version_num FROM alembic_version')"
     [ "$restored_revision" = "$expected_revision" ] || fail "Alembic revision восстановленной БД не совпадает с метаданными"
     trap - EXIT HUP INT TERM

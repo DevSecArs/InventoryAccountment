@@ -1,5 +1,9 @@
 services:
   db:
+    cpus: "1.0"
+    mem_limit: 1g
+    memswap_limit: 1g
+    pids_limit: 256
     image: postgres:16.4-alpine
     environment:
       POSTGRES_USER: inventory_test_app
@@ -13,8 +17,13 @@ services:
     volumes:
       - test_data:/var/lib/postgresql/data
   tests:
+    cpus: "2.0"
+    mem_limit: 2g
+    memswap_limit: 2g
+    pids_limit: 256
     image: inventory-accountment-tests:local
     environment:
+      PGCONNECT_TIMEOUT: "10"
       APP_ENV: test
       APP_DEBUG: "false"
       DATABASE_URL: postgresql+psycopg2://inventory_test_app:inventory_test_password@db:5432/inventory_test

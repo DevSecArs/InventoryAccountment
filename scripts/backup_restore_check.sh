@@ -16,10 +16,12 @@ esac
 backup_dir="${1:-/backups}"
 target_database="inventory_backup_restore_$(date -u +%Y%m%d%H%M%S)"
 backup_file=""
+corrupt_file=""
 
 cleanup() {
     dropdb --if-exists "$target_database" >/dev/null 2>&1 || true
     [ -z "$backup_file" ] || rm -f "$backup_file" "${backup_file}.metadata"
+    [ -z "$corrupt_file" ] || rm -f "$corrupt_file" "${corrupt_file}.metadata"
     psql --dbname="$PGDATABASE" --quiet --command \
         'TRUNCATE TABLE user_sessions, users, materials, suppliers, units RESTART IDENTITY CASCADE' >/dev/null || true
 }
@@ -60,6 +62,21 @@ restored_revision="$(psql --dbname="$target_database" --tuples-only --no-align -
 [ "$restored_control" = "$source_control" ] || fail "Контрольное значение или связь не восстановлены"
 [ "$restored_counts" = "$source_counts" ] || fail "Количество строк после восстановления не совпадает"
 [ "$restored_revision" = "$source_revision" ] || fail "Alembic revision после восстановления не совпадает"
+
+# Повторное восстановление не должно перезаписывать существующую БД без подтверждения.
+if TARGET_DATABASE="$target_database" BACKUP_FILE="$backup_file" sh /scripts/backup_restore.sh restore; then
+    fail "Восстановление без подтверждения перезаписало существующую БД"
+fi
+corrupt_file="${backup_file}.corrupt"
+cp "$backup_file" "$corrupt_file"
+cp "${backup_file}.metadata" "${corrupt_file}.metadata"
+printf 'corruption' >> "$corrupt_file"
+if TARGET_DATABASE="$target_database" BACKUP_FILE="$corrupt_file" sh /scripts/backup_restore.sh restore; then
+    fail "Повреждённый дамп принят"
+fi
+unchanged_control="$(psql --dbname="$target_database" --tuples-only --no-align --command \
+    "SELECT m.sku || '|' || m.name || '|' || u.code || '|' || s.code FROM materials m JOIN units u ON u.id = m.unit_id CROSS JOIN suppliers s WHERE m.id = 'backup-material'")"
+[ "$unchanged_control" = "$source_control" ] || fail "Отказ восстановления изменил данные цели"
 
 echo "CHECK_BACKUP_PATH=$backup_file"
 echo "CHECK_BACKUP_SHA256=$(sha256sum "$backup_file" | awk '{print $1}')"
