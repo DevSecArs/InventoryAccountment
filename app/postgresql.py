@@ -63,6 +63,14 @@ def session_scope() -> Iterator[Session]:
         session.close()
 
 
+def close_database() -> None:
+    """Закрыть созданный пул, не открывая БД ради завершения приложения."""
+    if get_engine.cache_info().currsize:
+        get_engine().dispose()
+    get_session_factory.cache_clear()
+    get_engine.cache_clear()
+
+
 def get_db_session() -> Generator[Session, None, None]:
     """Предоставить запросу транзакционную сессию PostgreSQL."""
     with session_scope() as session:

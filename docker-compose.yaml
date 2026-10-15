@@ -16,6 +16,7 @@ x-backend: &backend
 services:
   db:
     image: postgres:16.4-alpine
+    stop_grace_period: 60s
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-inventory_app}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_inventory_password}
@@ -38,6 +39,8 @@ services:
 
   app:
     <<: *backend
+    init: true
+    stop_grace_period: 45s
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -53,6 +56,8 @@ services:
 
   frontend:
     image: ${COMPOSE_PROJECT_NAME:-inventory-compose}-frontend:local
+    init: true
+    stop_grace_period: 15s
     build:
       context: .
       target: frontend

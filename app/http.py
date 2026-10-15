@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Iterator
+from collections.abc import AsyncIterator, Iterable, Iterator
+from contextlib import asynccontextmanager
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
@@ -22,7 +23,7 @@ from app.entities.routers import (
     supplier_router,
     unit_router,
 )
-from app.postgresql import is_database_ready, session_scope
+from app.postgresql import close_database, is_database_ready, session_scope
 
 logger = logging.getLogger(__name__)
 REQUEST_ID_HEADER = "X-Request-ID"
@@ -80,12 +81,22 @@ def _error_response(
     return JSONResponse(status_code=status_code, content=jsonable_encoder(body))
 
 
+@asynccontextmanager
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+    """Освободить пул БД после завершения обработки запросов сервером."""
+    try:
+        yield
+    finally:
+        close_database()
+
+
 def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
     """Создать приложение и подключить переданные роутеры сущностей."""
     application = FastAPI(
         title="InventoryAccountment API",
         description="HTTP API системы складского учёта",
         version="0.1.0",
+        lifespan=lifespan,
     )
 
     @application.middleware("http")

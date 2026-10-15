@@ -41,7 +41,8 @@ RUN find /app /usr/local/lib/python3.11/site-packages -name "*.cdx.json" -delete
 RUN mkdir /app/reports /app/mutants && chown app:app /app/reports /app/mutants
 USER app
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+STOPSIGNAL SIGTERM
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "30"]
 
 FROM node:24.21.0-bookworm-slim AS frontend-base
 
@@ -56,8 +57,11 @@ RUN pnpm install --frozen-lockfile
 COPY frontend/src ./src
 COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./
 COPY frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/.gitignore frontend/README.md ./
+RUN chown -R node:node /app/frontend
+USER node
 EXPOSE 5173
-CMD ["pnpm", "exec", "vite", "--host", "0.0.0.0", "--port", "5173"]
+STOPSIGNAL SIGTERM
+CMD ["node", "node_modules/vite/bin/vite.js", "--host", "0.0.0.0", "--port", "5173"]
 
 FROM frontend-base AS frontend-test
 

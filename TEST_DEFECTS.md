@@ -1,5 +1,57 @@
 # Результаты тестирования MVP
 
+## Жизненный цикл контейнеров — 15 октября 2026 года
+
+Задача для переноса в трекер (номер отсутствует): непривилегированный запуск
+приложения, корректная остановка по сигналу и сохранение данных при пересоздании
+контейнеров и обновлении образов. Ветка codex/container-lifecycle, база b6bced8.
+Пользовательский TODO не изменялся. Бизнес-правила и схема БД не меняются.
+
+Уже было: USER app у API/миграций, exec-форма команды Uvicorn, именованный том
+PostgreSQL inventory_data, make down без удаления тома. Не хватало USER у
+Frontend, явных лимитов остановки и освобождения пула на lifespan shutdown.
+
+Критические файлы и изменения для независимой проверки:
+- Dockerfile: Frontend работает от node, файлы доступны ему; прямой запуск
+  Node/Vite без pnpm-посредника; SIGTERM и timeout Uvicorn 30 секунд.
+- docker-compose.yaml и compose.test.yaml: init у API/Frontend; время остановки
+  API 45 секунд, Frontend 15, PostgreSQL 60. Имя и путь тома не менялись.
+- app/http.py и app/postgresql.py: lifespan освобождает пул БД и кэш фабрики
+  сессий, не создавая подключение ради завершения процесса.
+- tests/unit/test_application_lifecycle.py: закрытие ресурсов, повторная очистка,
+  настоящий SIGTERM при активном HTTP-запросе; запрос завершается до shutdown.
+- README.md, GUIDE.md, docs/TEST_MATRIX.md: порядок остановки, обновления,
+  сохранение имени проекта/ENV_FILE, ограничения при смене основной версии БД.
+
+Фактические проверки:
+- Backend: **80 passed**, покрытие **84,72%**, порог 80% сохранён.
+- После уточнения типа HTTP-ответа в новом тесте повторно прошли все три
+  теста lifecycle, Ruff check/format и mypy всех 39 Python-файлов; Bandit
+  изменённых модулей приложения завершился успешно.
+- Frontend в новом образе от node: **9 passed**, TypeScript/Vite build успешен.
+- В отдельном основном Compose-проекте inventory-lifecycle-check: API UID 999,
+  Frontend UID 1000, процесс PostgreSQL UID 70; migrate использует app.
+  Официальный PostgreSQL entrypoint может начинать подготовку тома от root,
+  сам сервер работает от postgres. Настройки pg-tools/test-образов отдельные.
+- docker compose stop: API/Frontend exit 143 (SIGTERM), БД exit 0, OOM отсутствует;
+  в логах API есть Application shutdown complete, БД — database system is shut down.
+- Через HTTP UI-прокси зарегистрирован тестовый пользователь и создана KG.
+  Затем down без --volumes, контрольный образ API с новой меткой (новый image ID),
+  up --no-build: ID всех контейнеров изменились, имя тома прежнее, вход и чтение
+  той же KG по ID успешны. Это проверка замены образа, не миграции версии PostgreSQL.
+- Основной и тестовый Compose config валидны; git diff --check успешен.
+
+Логи: reports/lifecycle-build.log, lifecycle-tests.log, lifecycle-quality.log,
+lifecycle-frontend.log, lifecycle-containers.log. Полный make verify пытались
+запустить в Linux test-образе: остановка из-за отсутствия Docker CLI; на хосте
+Windows GNU Make отсутствует. Полный verify, CI, audit и image scan этой
+итерацией не подтверждены; человеческая приёмка не проводилась.
+
+Откат: вернуть совместимые предыдущие образы и конфигурацию с тем же именем
+проекта/тома; схему откатывать не требуется. Перед рабочим обновлением нужен
+backup. Обновление основной версии PostgreSQL требует отдельного плана.
+PR/MR и коммиты не создавались.
+
 ## Исправление мутационных проверок — 15 октября 2026 года
 
 Задача без номера трекера: устранить ложное выживание мутаций из-за импорта
