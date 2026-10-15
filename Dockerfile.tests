@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM node:24.21.0-bookworm-slim AS node
+FROM zricethezav/gitleaks:v8.21.2 AS gitleaks
+FROM aquasec/trivy:0.56.2 AS trivy
 FROM python:3.11-slim-trixie
 
 RUN apt-get update && apt-get install -y --no-install-recommends make git ca-certificates \
@@ -13,9 +15,9 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 WORKDIR /app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --extra dev --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --extra dev --no-install-project
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./frontend/
-RUN pnpm --dir frontend install --frozen-lockfile
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm --dir frontend install --frozen-lockfile
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini Makefile ./
@@ -24,7 +26,9 @@ COPY scripts ./scripts
 COPY frontend/src ./frontend/src
 COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./frontend/
 COPY frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/.gitignore frontend/README.md ./frontend/
-RUN uv sync --frozen --extra dev
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --extra dev
+COPY --from=gitleaks /usr/bin/gitleaks /usr/local/bin/gitleaks
+COPY --from=trivy /usr/local/bin/trivy /usr/local/bin/trivy
 ARG LOCAL_UID=1000
 ARG LOCAL_GID=1000
 RUN test "$LOCAL_UID" -gt 0 && test "$LOCAL_GID" -gt 0 && \
