@@ -6,12 +6,32 @@ ENV_FILE без встроенного пути; автоматически си
 
 На Windows используйте [инструкцию без Make](DOCKER_WINDOWS.md).
 
-На Linux установите Docker Engine с Compose и GNU Make, затем из корня:
+На Linux установите Docker Engine с Compose и GNU Make, затем откройте терминал
+в корне проекта. Сначала выполните только команду ввода:
 
 ~~~bash
-make setup
-make run
+read -r -s -p 'Путь к env-файлу (вставьте его после приглашения): ' ENV_FILE; printf '\n'
 ~~~
+
+После запуска терминал ждёт ввод: вставьте путь к файлу и нажмите Enter.
+`-p` — это только текст приглашения; путь вводится после него, не между
+кавычками команды. Затем выполните:
+
+~~~bash
+if [ -n "$ENV_FILE" ] && [ -r "$ENV_FILE" ]; then
+  export ENV_FILE
+  echo 'ENV_FILE задан, файл доступен для чтения.'
+  make setup
+  make run
+else
+  echo 'ENV_FILE пуст или файл недоступен. Повторите ввод.' >&2
+fi
+~~~
+
+В этом же терминале рабочие команды `make status`, `make migrate` и другие
+унаследуют `ENV_FILE`. В новом терминале введите путь снова. Для локального
+`.env`/значений по умолчанию выполните `unset ENV_FILE`.
+Windows-инструкция без Make: [DOCKER_WINDOWS.md](DOCKER_WINDOWS.md).
 
 Интерфейс: http://localhost:5180. Создайте первого администратора.
 API: http://localhost:8010/docs. Проверка БД: http://localhost:8010/health/ready.
