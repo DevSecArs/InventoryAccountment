@@ -12,6 +12,7 @@ __pycache__
 .ruff_cache
 htmlcov
 /reports
+/reports-before-nonroot
 backups
 dumps
 build
@@ -23,3 +24,11 @@ tmp
 **/.pnpm-store
 **/node_modules
 *.tsbuildinfo
+
+**/.env
+**/.env.*
+**/secrets
+**/*.key
+**/*.pem
+**/*.dump
+**/*.backup

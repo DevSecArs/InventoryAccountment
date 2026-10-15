@@ -2,7 +2,7 @@
 
 Единственный поддерживаемый способ запуска — Docker Compose с PostgreSQL
 внутри проекта. Внешняя БД, отдельные Python/Node-службы и их systemd units
-больше не создаются. Требуются Docker Engine/Compose, Git и GNU Make.
+больше не создаются. Требуются Docker Engine/Compose, Git, GNU Make и Python 3.11+ для оркестрации проверок.
 
 ~~~bash
 make setup

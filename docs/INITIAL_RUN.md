@@ -6,7 +6,7 @@ ENV_FILE без встроенного пути; автоматически си
 
 На Windows используйте [инструкцию без Make](DOCKER_WINDOWS.md).
 
-На Linux установите Docker Engine с Compose и GNU Make, затем откройте терминал
+На Linux установите Docker Engine с Compose, GNU Make и Python 3.11+, затем откройте терминал
 в корне проекта. Сначала выполните только команду ввода:
 
 ~~~bash
@@ -58,3 +58,11 @@ Compose добавляйте `--env-file "$ENV_FILE"` (Linux) или
 `--env-file "$env:ENV_FILE"` (PowerShell), если переменная задана.
 
 [Миграции, backup/restore и ограничения ресурсов](DATABASE_OPERATIONS.md) — команды для Make, Linux и PowerShell.
+
+## Политика контейнеров
+
+Все контейнеры, включая PostgreSQL и проверки, запускаются без root.
+`make container-check` автоматически проверяет правила и изолированный запуск;
+команда включена в `make verify`. Нужен Python 3.11+ на хосте.
+Перед прямыми командами Compose подготовьте каталоги и UID/GID по
+[инструкции безопасности контейнеров](CONTAINER_POLICY.md).

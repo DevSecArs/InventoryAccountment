@@ -26,6 +26,11 @@ def test_context_preserves_report_sources_and_excludes_local_files(
     modules.mkdir()
     (modules / "local-only.txt").write_text("dependency", encoding="utf-8")
     (frontend / ".env.local").write_text("TEST_ONLY=not-a-secret", encoding="utf-8")
+    secrets = frontend / "secrets"
+    secrets.mkdir()
+    (secrets / "credentials.txt").write_text("example-only", encoding="utf-8")
+    for filename in ("private.key", "certificate.pem", "database.dump", "database.backup"):
+        (frontend / filename).write_text("example-only", encoding="utf-8")
     monkeypatch.setattr(build_test_image, "ROOT", tmp_path)
     buffer = BytesIO()
     with tarfile.open(fileobj=buffer, mode="w") as archive:

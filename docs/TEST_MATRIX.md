@@ -11,6 +11,7 @@
 | Период и CSV | Границы периода, escaping, опасные начальные символы, пустой CSV | tests/unit/test_supply_report.py |
 | Конфигурация Compose | Кодирование пароля, сохранение рабочего тома, отдельный test-clean и отказ удалённого флага | tests/unit/test_compose_configuration.py |
 | Test-образ | Исключение локальных зависимостей и .env, сохранение исходников отчётов | tests/unit/test_build_context.py |
+| Политика контейнеров | Отказ для root/latest, отключённых healthcheck, лишних портов, секретных build args; запуск и secret scan образов в отдельном проекте | tests/unit/test_container_policy.py, scripts/container_check.py |
 | API, auth, справочники | Health/readiness, ошибки, CSRF, сессии, purge, CRUD, архивы, поиск и пагинация | tests/integration/test_api_catalogs.py |
 | Черновики | Создание/чтение/PATCH, ограничения, ссылки, rollback и запрет изменения нечерновика | tests/integration/test_receipts.py |
 | Проведение и история | Повтор без изменения updated_at и второй истории, legacy-статус, удаление черновика, два конкурентных проведения | tests/integration/test_receipt_posting.py |

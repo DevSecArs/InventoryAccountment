@@ -1,7 +1,8 @@
 # Ручной запуск на Windows без Make
 
 Нужны только Docker Desktop в режиме Linux containers и PowerShell.
-Python, Node.js, pnpm и Make на Windows устанавливать не требуется.
+Для ручного запуска Python, Node.js, pnpm и Make не нужны.
+Для автоматического container-check дополнительно нужен Python 3.11+.
 Команды выполнять из корня репозитория. Это локальный учебный стенд:
 порты доступны только на этом компьютере, учётные данные БД демонстрационные.
 
@@ -80,3 +81,12 @@ Compose добавляйте `--env-file "$ENV_FILE"` (Linux) или
 `--env-file "$env:ENV_FILE"` (PowerShell), если переменная задана.
 
 [Миграции, backup/restore и ограничения ресурсов](DATABASE_OPERATIONS.md) — команды для Make, Linux и PowerShell.
+
+## Политика контейнеров
+
+Все контейнеры, включая PostgreSQL и проверки, запускаются без root.
+`make container-check` автоматически проверяет правила и изолированный запуск;
+команда включена в `make verify`. Нужен Python 3.11+ на хосте.
+Перед backup/restore создайте каталог `backups` через `New-Item -ItemType Directory -Force backups`.
+Права и UID/GID описаны в
+[инструкции безопасности контейнеров](CONTAINER_POLICY.md).

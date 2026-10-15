@@ -1,9 +1,13 @@
 name: inventory-compose
 
 x-backend: &backend
+  user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
   image: ${COMPOSE_PROJECT_NAME:-inventory-compose}-api:local
   build:
     context: .
+    args:
+      LOCAL_UID: ${LOCAL_UID:-1000}
+      LOCAL_GID: ${LOCAL_GID:-1000}
     target: runtime
   environment:
     APP_ENV: development
@@ -16,6 +20,9 @@ x-backend: &backend
 
 services:
   db:
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    user: "70:70"
     cpus: "1.0"
     mem_limit: 1g
     memswap_limit: 1g
@@ -35,6 +42,9 @@ services:
       retries: 30
 
   migrate:
+    image: ${COMPOSE_PROJECT_NAME:-inventory-compose}-migrate:local
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     cpus: "1.0"
     mem_limit: 512m
     memswap_limit: 512m
@@ -47,6 +57,9 @@ services:
     restart: "no"
 
   app:
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     cpus: "1.0"
     mem_limit: 512m
     memswap_limit: 512m
@@ -68,6 +81,9 @@ services:
       retries: 30
 
   frontend:
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     cpus: "1.0"
     mem_limit: 768m
     memswap_limit: 768m
@@ -77,6 +93,9 @@ services:
     stop_grace_period: 15s
     build:
       context: .
+      args:
+        LOCAL_UID: ${LOCAL_UID:-1000}
+        LOCAL_GID: ${LOCAL_GID:-1000}
       target: frontend
     environment:
       VITE_API_PROXY_TARGET: http://app:8000
@@ -92,6 +111,9 @@ services:
       retries: 30
 
   pg-tools:
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     cpus: "1.0"
     mem_limit: 512m
     memswap_limit: 512m

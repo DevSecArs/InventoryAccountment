@@ -102,3 +102,11 @@ Compose добавляйте `--env-file "$ENV_FILE"` (Linux) или
 `--env-file "$env:ENV_FILE"` (PowerShell), если переменная задана.
 
 [Миграции, backup/restore и ограничения ресурсов](docs/DATABASE_OPERATIONS.md) — команды для Make, Linux и PowerShell.
+
+## Политика контейнеров
+
+Все контейнеры, включая PostgreSQL и проверки, запускаются без root.
+`make container-check` автоматически проверяет правила и изолированный запуск;
+команда включена в `make verify`. Нужен Python 3.11+ на хосте.
+Перед прямыми командами Compose подготовьте каталоги и UID/GID по
+[инструкции безопасности контейнеров](docs/CONTAINER_POLICY.md).

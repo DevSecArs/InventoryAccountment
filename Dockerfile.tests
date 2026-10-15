@@ -16,6 +16,19 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --extra dev --no-install-project
 COPY frontend/package.json frontend/pnpm-lock.yaml ./frontend/
 RUN pnpm --dir frontend install --frozen-lockfile
-COPY . .
+COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini Makefile ./
+COPY tests ./tests
+COPY scripts ./scripts
+COPY frontend/src ./frontend/src
+COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./frontend/
+COPY frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/.gitignore frontend/README.md ./frontend/
 RUN uv sync --frozen --extra dev
+ARG LOCAL_UID=1000
+ARG LOCAL_GID=1000
+RUN test "$LOCAL_UID" -gt 0 && test "$LOCAL_GID" -gt 0 && \
+    groupadd --gid "$LOCAL_GID" app && useradd --uid "$LOCAL_UID" --gid app --create-home app && \
+    mkdir -p /app/reports && chown -R app:app /app
+USER app
 CMD ["make", "-f", "scripts/test-runner.mk", "test"]

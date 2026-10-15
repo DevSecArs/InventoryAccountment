@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tarfile
 import tempfile
@@ -22,7 +23,11 @@ EXCLUDED = {"node_modules", "__pycache__", ".venv", ".git", "dist"}
 
 def add_source(archive: tarfile.TarFile, path: Path) -> None:
     """Исключить зависимости до чтения их метаданных, включая WSL-ссылки."""
-    if path.name in EXCLUDED or path.name.startswith(".env"):
+    if (
+        path.name in EXCLUDED | {"secrets"}
+        or path.name.startswith(".env")
+        or path.suffix in {".pem", ".key", ".dump", ".backup"}
+    ):
         return
     if path.is_symlink() or path.suffix in {".pyc", ".tsbuildinfo"}:
         return
@@ -44,6 +49,10 @@ def main() -> None:
                 "docker",
                 "build",
                 "--progress=plain",
+                "--build-arg",
+                f"LOCAL_UID={os.environ.get('LOCAL_UID', str(os.getuid()) if hasattr(os, 'getuid') else '1000')}",
+                "--build-arg",
+                f"LOCAL_GID={os.environ.get('LOCAL_GID', str(os.getgid()) if hasattr(os, 'getgid') else '1000')}",
                 "-f",
                 "Dockerfile.tests",
                 "-t",

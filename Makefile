@@ -11,8 +11,12 @@ export ENV_FILE
 COMPOSE := sh scripts/compose.sh --project-name $(PROJECT_NAME) -f docker-compose.yaml
 TEST_COMPOSE := docker compose --env-file compose.test.env --project-name $(TEST_PROJECT) -f compose.test.yaml
 FRONTEND_TEST_IMAGE ?= inventory-accountment-frontend-test:local
-PNPM_STORE_VOLUME ?= inventory-accountment-pnpm-store
+PNPM_STORE_VOLUME ?= inventory-accountment-pnpm-store-nonroot-$(LOCAL_UID)
 BASE_REF ?= main
+PYTHON ?= python3
+LOCAL_UID ?= $(shell id -u)
+LOCAL_GID ?= $(shell id -g)
+export LOCAL_UID LOCAL_GID
 BACKUP ?=
 TARGET_DATABASE ?=
 TARGET_DATABASE_URL ?=
@@ -23,9 +27,9 @@ ifneq ($(filter DOCKER LOCAL TEST,$(.VARIABLES)),)
 $(error Флаги DOCKER/LOCAL/TEST удалены. Все команды работают в Docker; проверки изолированы автоматически)
 endif
 
-.PHONY: setup run up down status migrate backup restore test test-in-container quality verify test-clean check-test-environment check-test-project-clean frontend-test-image ensure-pnpm-store mutation migration-check backup-restore-check container-smoke lock-check secret-scan image-scan check-working-tree-diff check-branch-diff
+.PHONY: container-check prepare-container-dirs setup run up down status migrate backup restore test test-in-container quality verify test-clean check-test-environment check-test-project-clean frontend-test-image ensure-pnpm-store mutation migration-check backup-restore-check container-smoke lock-check secret-scan image-scan check-working-tree-diff check-branch-diff
 
-setup:
+setup: prepare-container-dirs
 	@docker info >/dev/null
 	@docker compose version
 	@$(COMPOSE) config --quiet
@@ -46,7 +50,7 @@ status:
 migrate:
 	@$(COMPOSE) run --rm --build migrate
 
-check-test-environment:
+check-test-environment: prepare-container-dirs
 	@test -n "$(TEST_RUN_ID)" || (echo "TEST_RUN_ID не должен быть пустым" >&2; exit 2)
 	@test "$(TEST_PROJECT)" != "$(PROJECT_NAME)" || (echo "Тестовый и рабочий проекты должны различаться" >&2; exit 2)
 	@$(TEST_COMPOSE) config --quiet
@@ -64,18 +68,18 @@ test-in-container:
 	@echo '==> Backend: собираю актуальный test-образ'
 	@$(TEST_COMPOSE) build --progress=plain app
 	@echo '==> Backend: применяю миграции к тестовой БД'
-	@$(TEST_COMPOSE) run --rm --user root app alembic upgrade head
+	@$(TEST_COMPOSE) run --rm app alembic upgrade head
 	@echo '==> Backend: запускаю pytest и проверку покрытия'
-	@$(TEST_COMPOSE) run --rm --user root app python scripts/localize_test_output.py -- pytest
+	@$(TEST_COMPOSE) run --rm app python scripts/localize_test_output.py -- pytest
 	@echo '==> Frontend: подготавливаю test-образ и кэш pnpm'
 	@$(MAKE) frontend-test-image
 	@$(MAKE) ensure-pnpm-store
 	@echo '==> Frontend: запускаю тесты из проектного образа'
-	@docker run --rm --cpus=2 --memory=2g --memory-swap=2g --pids-limit=256 -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)" sh -lc 'node /scripts/localize_test_output.mjs -- pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && node /scripts/localize_test_output.mjs -- pnpm test:run'
+	@docker run --rm --user "$(LOCAL_UID):$(LOCAL_GID)" --cpus=2 --memory=2g --memory-swap=2g --pids-limit=256 -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)" sh -lc 'node /scripts/localize_test_output.mjs -- pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && node /scripts/localize_test_output.mjs -- pnpm test:run'
 
 frontend-test-image:
 	@echo '==> Frontend: собираю образ $(FRONTEND_TEST_IMAGE)'
-	@docker build --progress=plain --target frontend-test --tag "$(FRONTEND_TEST_IMAGE)" .
+	@docker build --build-arg LOCAL_UID="$(LOCAL_UID)" --build-arg LOCAL_GID="$(LOCAL_GID)" --progress=plain --target frontend-test --tag "$(FRONTEND_TEST_IMAGE)" .
 
 ensure-pnpm-store:
 	@set -eu; \
@@ -86,37 +90,37 @@ ensure-pnpm-store:
 		docker volume create "$(PNPM_STORE_VOLUME)" >/dev/null; \
 	fi
 
-quality:
+quality: prepare-container-dirs
 	@$(MAKE) check-test-environment
 	@echo '==> Backend: собираю актуальный test-образ для статических проверок'
 	@$(TEST_COMPOSE) build --progress=plain app
 	@echo '==> Backend: запускаю Ruff и mypy без зависимостей Compose'
-	@$(TEST_COMPOSE) run --rm --no-deps --user root app sh -c 'mkdir -p reports && echo "==> Ruff: проверка форматирования" && ruff format --check --no-cache app tests scripts && echo "==> Ruff: статический анализ" && ruff check --no-cache app tests scripts && echo "==> mypy: проверка типов" && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts'
+	@$(TEST_COMPOSE) run --rm --no-deps app sh -c 'mkdir -p reports && echo "==> Ruff: проверка форматирования" && ruff format --check --no-cache app tests scripts && echo "==> Ruff: статический анализ" && ruff check --no-cache app tests scripts && echo "==> mypy: проверка типов" && MYPY_CACHE_DIR=/tmp/mypy mypy app tests scripts'
 	@echo '==> SAST: начинаю статический анализ безопасности; тип — Bandit'
 	@set +e; \
-	if $(TEST_COMPOSE) run --rm --no-deps --user root app bandit -q -r app scripts -lll -f json -o reports/bandit.json; then sast_status=0; else sast_status=$$?; fi; \
-	if $(TEST_COMPOSE) run --rm --no-deps --user root app python scripts/summarize_bandit.py reports/bandit.json "$$sast_status"; then summary_status=0; else summary_status=$$?; fi; \
+	if $(TEST_COMPOSE) run --rm --no-deps app bandit -q -r app scripts -lll -f json -o reports/bandit.json; then sast_status=0; else sast_status=$$?; fi; \
+	if $(TEST_COMPOSE) run --rm --no-deps app python scripts/summarize_bandit.py reports/bandit.json "$$sast_status"; then summary_status=0; else summary_status=$$?; fi; \
 	if [ "$$sast_status" -ne 0 ]; then exit "$$sast_status"; fi; \
 	exit "$$summary_status"
 	@echo '==> Backend: запускаю audit Python-зависимостей без зависимостей Compose'
-	@$(TEST_COMPOSE) run --rm --no-deps --user root app sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
+	@$(TEST_COMPOSE) run --rm --no-deps app sh -c 'pip freeze --exclude-editable > /tmp/requirements.txt && pip-audit --strict --format json -o reports/pip-audit.json -r /tmp/requirements.txt'
 	@mkdir -p reports
 	@echo '==> Frontend: подготавливаю образ и pnpm-кэш для проверок качества'
 	@$(MAKE) frontend-test-image
 	@$(MAKE) ensure-pnpm-store
 	@echo '==> Frontend: запускаю форматирование, lint и typecheck'
-	@docker run --rm --cpus=2 --memory=2g --memory-swap=2g --pids-limit=256 -v "$(PNPM_STORE_VOLUME):/pnpm/store" -v "$(CURDIR)/reports:/reports" "$(FRONTEND_TEST_IMAGE)" sh -lc 'pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && pnpm quality && echo "==> Frontend: проверяю уязвимости зависимостей (порог отказа: High)" && if pnpm audit --audit-level=high --json > /reports/pnpm-audit.json; then echo "Frontend audit: уязвимостей уровня High и Critical не найдено."; else audit_status=$$?; echo "ОШИБКА: аудит frontend-зависимостей завершился отказом." >&2; node -e "const r=JSON.parse(require(\"node:fs\").readFileSync(\"/reports/pnpm-audit.json\",\"utf8\"));const v=r.metadata&&r.metadata.vulnerabilities;if(!v){console.error(\"Не удалось получить сводку уязвимостей; проверьте JSON-отчёт.\")}else{console.error(\"Найдено: High=\"+(v.high||0)+\", Critical=\"+(v.critical||0)+\".\");for(const [name,item] of Object.entries(r.vulnerabilities||{})){if(item.severity===\"high\"||item.severity===\"critical\"){console.error(\"Пакет: \"+name+\" (\"+item.severity+\").\");for(const via of item.via||[]){if(typeof via===\"object\")console.error(\"  Причина: \"+via.title+(via.url?\" — \"+via.url:\"\"));}}}}"; echo "Полный отчёт сохранён: reports/pnpm-audit.json"; exit "$$audit_status"; fi'
+	@docker run --rm --user "$(LOCAL_UID):$(LOCAL_GID)" --cpus=2 --memory=2g --memory-swap=2g --pids-limit=256 -v "$(PNPM_STORE_VOLUME):/pnpm/store" -v "$(CURDIR)/reports:/reports" "$(FRONTEND_TEST_IMAGE)" sh -lc 'pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && pnpm quality && echo "==> Frontend: проверяю уязвимости зависимостей (порог отказа: High)" && if pnpm audit --audit-level=high --json > /reports/pnpm-audit.json; then echo "Frontend audit: уязвимостей уровня High и Critical не найдено."; else audit_status=$$?; echo "ОШИБКА: аудит frontend-зависимостей завершился отказом." >&2; node -e "const r=JSON.parse(require(\"node:fs\").readFileSync(\"/reports/pnpm-audit.json\",\"utf8\"));const v=r.metadata&&r.metadata.vulnerabilities;if(!v){console.error(\"Не удалось получить сводку уязвимостей; проверьте JSON-отчёт.\")}else{console.error(\"Найдено: High=\"+(v.high||0)+\", Critical=\"+(v.critical||0)+\".\");for(const [name,item] of Object.entries(r.vulnerabilities||{})){if(item.severity===\"high\"||item.severity===\"critical\"){console.error(\"Пакет: \"+name+\" (\"+item.severity+\").\");for(const via of item.via||[]){if(typeof via===\"object\")console.error(\"  Причина: \"+via.title+(via.url?\" — \"+via.url:\"\"));}}}}"; echo "Полный отчёт сохранён: reports/pnpm-audit.json"; exit "$$audit_status"; fi'
 	@$(MAKE) secret-scan
 
-secret-scan:
+secret-scan: prepare-container-dirs
 	@mkdir -p reports
-	@docker run --rm -v "$(CURDIR):/repo:ro" -v "$(CURDIR)/reports:/reports" zricethezav/gitleaks:v8.21.2 detect --source=/repo --report-format=json --report-path=/reports/gitleaks.json --redact --exit-code=1
+	@docker run --rm --user "$(LOCAL_UID):$(LOCAL_GID)" -v "$(CURDIR):/repo:ro" -v "$(CURDIR)/reports:/reports" zricethezav/gitleaks:v8.21.2 detect --source=/repo --report-format=json --report-path=/reports/gitleaks.json --redact --exit-code=1
 
-image-scan:
+image-scan: prepare-container-dirs
 	@test -n "$(IMAGE_ID)" || (echo "Укажите IMAGE_ID собранного образа" >&2; exit 2)
 	@mkdir -p reports
 	@docker image inspect "$(IMAGE_ID)" --format '{{.Id}}' >/dev/null
-	@docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$(CURDIR)/reports:/reports" aquasec/trivy:0.56.2 image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed --format json --output /reports/trivy-image.json "$(IMAGE_ID)"
+	@docker run --rm --user "$(LOCAL_UID):$(LOCAL_GID)" --group-add "$$(stat -c %g /var/run/docker.sock)" -e TRIVY_CACHE_DIR=/tmp/trivy -v /var/run/docker.sock:/var/run/docker.sock:ro -v "$(CURDIR)/reports:/reports" aquasec/trivy:0.56.2 image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed --format json --output /reports/trivy-image.json "$(IMAGE_ID)"
 
 mutation:
 	@$(MAKE) check-test-environment
@@ -127,7 +131,7 @@ migration-check:
 	@$(MAKE) check-test-environment
 	@$(TEST_COMPOSE) run --rm app python scripts/migration_check.py
 
-backup:
+backup: prepare-container-dirs
 	@$(COMPOSE) run --rm pg-tools sh /scripts/backup_restore.sh backup /backups
 
 restore:
@@ -150,12 +154,12 @@ backup-restore-check:
 lock-check:
 	@echo '==> Lock-файлы: проверяю Python-зависимости'
 	@$(TEST_COMPOSE) build app
-	@$(TEST_COMPOSE) run --rm --no-deps --user root app uv lock --check
+	@$(TEST_COMPOSE) run --rm --no-deps app uv lock --check
 	@echo '==> Lock-файлы: подготавливаю frontend-образ и pnpm-кэш'
 	@$(MAKE) frontend-test-image
 	@$(MAKE) ensure-pnpm-store
 	@echo '==> Lock-файлы: проверяю frontend-зависимости'
-	@docker run --rm --cpus=2 --memory=2g --memory-swap=2g --pids-limit=256 -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)" pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store
+	@docker run --rm --user "$(LOCAL_UID):$(LOCAL_GID)" --cpus=2 --memory=2g --memory-swap=2g --pids-limit=256 -v "$(PNPM_STORE_VOLUME):/pnpm/store" "$(FRONTEND_TEST_IMAGE)" pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store
 
 container-smoke:
 	@$(MAKE) check-test-environment
@@ -188,6 +192,7 @@ verify:
 	cleanup() { echo '==> Очистка изолированного тестового Compose-проекта; pnpm-кэш $(PNPM_STORE_VOLUME) сохраняется'; $(MAKE) test-clean TEST_RUN_ID="$(TEST_RUN_ID)"; }; \
 	trap cleanup EXIT HUP INT TERM; \
 	echo '==> Подготовка изолированного Docker-контура'; $(MAKE) check-test-environment TEST_RUN_ID="$(TEST_RUN_ID)"; \
+	echo '==> Политика контейнеров'; $(MAKE) container-check; \
 	echo '==> Проверка lock-файлов'; $(MAKE) lock-check TEST_RUN_ID="$(TEST_RUN_ID)"; \
 	echo '==> Проверка качества, включая SAST Bandit'; $(MAKE) quality TEST_RUN_ID="$(TEST_RUN_ID)"; \
 	echo '==> Автоматические тесты'; $(MAKE) test TEST_RUN_ID="$(TEST_RUN_ID)"; \
@@ -201,3 +206,10 @@ verify:
 	cleanup; \
 	trap - EXIT HUP INT TERM
 	@echo '==> Проверки успешно завершены; приложение автоматически не запускается'
+
+# Python 3 нужен на хосте для оркестрации Docker и проверки политики.
+prepare-container-dirs:
+	@$(PYTHON) scripts/container_check.py --prepare-only
+
+container-check:
+	@$(PYTHON) scripts/container_check.py

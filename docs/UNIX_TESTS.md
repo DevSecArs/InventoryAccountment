@@ -63,3 +63,11 @@ compose.test-runner.yaml, scripts/build_test_image.py, scripts/test-runner.mk
 
 ENV_FILE рабочего приложения здесь не используется. Пустой compose.test.env
 исключает загрузку рабочего .env; реквизиты тестовой БД фиксированы в Compose.
+
+## Политика контейнеров
+
+Все контейнеры, включая PostgreSQL и проверки, запускаются без root.
+`make container-check` автоматически проверяет правила и изолированный запуск;
+команда включена в `make verify`. Нужен Python 3.11+ на хосте.
+Перед прямыми командами Compose подготовьте каталоги и UID/GID по
+[инструкции безопасности контейнеров](CONTAINER_POLICY.md).

@@ -1,5 +1,64 @@
 # Результаты тестирования MVP
 
+## Запрет root и политика контейнеров — 15 октября 2026 года
+
+Задача без номера трекера: `make container-check` и запрет latest, root,
+секретов в образах, отключённых healthcheck и лишних опубликованных портов.
+Ветка `codex/container-policy`, исходный commit
+`bc590d25ea6d04354e5e63f513367fa432982b09`. Пользовательский TODO не изменён.
+Описание задачи, критерии и откат: [CONTAINER_POLICY.md](docs/CONTAINER_POLICY.md).
+
+Критические изменения: Dockerfile/Dockerfile.tests и все три Compose-файла
+(пользователи, права, защита от повышения привилегий, явные теги); Makefile
+(новая обязательная проверка, удаление root-переопределений); scripts/compose.sh,
+scripts/build_test_image.py, scripts/container_check.py; исключения build context,
+регрессионные тесты и инструкции. PostgreSQL остаётся на UID 70 и прежнем пути
+именованного тома. API/UI/test-образы собираются с UID/GID оператора.
+Схема БД и рабочие данные не меняются. PR/MR не создан. Изменения подготовлены
+к коммиту по прямому указанию пользователя без дополнительных проверок.
+
+Фактически проверено:
+
+- Полный Backend в отдельной БД от UID 1000: 88 passed, покрытие 84.72% при
+  сохранённом пороге 80%; миграционная матрица прошла.
+- Штатный Linux test-runner без `--user`: 88 Backend-тестов, 9 Frontend-тестов,
+  production-сборка Frontend и миграции прошли; exit code 0.
+- Frontend-test образ устанавливает зависимости и использует новый named volume
+  кэша без root; 9 тестов и сборка прошли.
+- Ruff format/check и mypy: 42 файла, успешно. Bandit app/scripts с проектным
+  порогом `-lll`: exit code 0.
+- Негативные тесты политики отклоняют root/latest, отключённый healthcheck,
+  неподходящие порты и секретные build args. Build-context тест дополнительно
+  проверяет исключение ключей, каталога secrets и дампов.
+
+Обнаруженные ограничения и исправленные отказы:
+
+- Одновременная сборка app/migrate в один тег давала `image already exists`.
+  У migrate теперь отдельный тег, общий Dockerfile и кэш сохранены.
+- Прежний root-owned junit.xml не позволял записать отчёт от UID 1000.
+  Старые тестовые артефакты сохранены в reports/before-nonroot-20261015-183537,
+  повторный прогон прошёл. Переход существующих установок описан в инструкции.
+- Frontend quality остановился на Prettier в 8 неизменённых файлах: client.ts,
+  receipts.ts, reports.ts, AdminPage.tsx, ReceiptsPage.tsx, ReportsPage.test.tsx,
+  ReportsPage.tsx, DashboardPage.tsx. Исправления форматирования не внесены;
+  ESLint/typecheck этой команды после отказа Prettier не запускались.
+- `make verify` на Windows не запущен: GNU Make отсутствует. Полный verify,
+  аудит зависимостей, сканирование уязвимостей образов и CI не объявлены успешными.
+  Secret scan контейнерной политики не заменяет vulnerability scan.
+
+Логи: reports/container-policy-tests.log, container-policy-runner.log,
+container-policy-frontend.log (отказ quality), container-policy-frontend-tests.log,
+container-policy-quality.log, container-policy-bandit.json.
+Контейнерные проверки остановлены по прямому указанию пользователя до
+завершения полного secret scan и окончательного прогона. Полный
+`container-check` не объявляется успешным. Выполненные до остановки UID/healthcheck,
+backup/restore и тесты перечислены выше; завершение всех проверок остаётся
+критерием перед слиянием. Новые проверки после указания остановиться не запускались.
+Логи незавершённых прогонов: reports/container-check-run.log,
+reports/container-check-final.log; container-check.json помечен interrupted.
+Процессы проверки и сканер остановлены, их одноразовые Docker-проекты удалены.
+Образы и кэш pnpm сохранены.
+
 ## Операции БД и ограничения ресурсов — 15 октября 2026 года
 
 Задача без номера трекера: надёжные контейнерные миграции, резервное копирование,

@@ -32,13 +32,16 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-RUN groupadd --system app && useradd --system --gid app --create-home app
+ARG LOCAL_UID=1000
+ARG LOCAL_GID=1000
+RUN test "$LOCAL_UID" -gt 0 && test "$LOCAL_GID" -gt 0 && \
+    groupadd --gid "$LOCAL_GID" app && useradd --uid "$LOCAL_UID" --gid app --create-home app
 WORKDIR /app
 COPY --from=builder --chown=app:app /app /app
 RUN pip install --no-cache-dir --upgrade "setuptools>=80.0.0"
 RUN find /app /usr/local/lib/python3.11/site-packages -name "*.cdx.json" -delete 2>/dev/null || true
 
-RUN mkdir /app/reports /app/mutants && chown app:app /app/reports /app/mutants
+RUN mkdir /app/reports /app/mutants /app/backups && chown app:app /app/reports /app/mutants /app/backups
 USER app
 EXPOSE 8000
 STOPSIGNAL SIGTERM
@@ -48,6 +51,12 @@ FROM node:24.21.0-bookworm-slim AS frontend-base
 
 WORKDIR /app/frontend
 RUN npm install --global pnpm@11.19.0
+ARG LOCAL_UID=1000
+ARG LOCAL_GID=1000
+RUN test "$LOCAL_UID" -gt 0 && test "$LOCAL_GID" -gt 0 && \
+    groupmod -g "$LOCAL_GID" node && usermod -u "$LOCAL_UID" -g "$LOCAL_GID" node && \
+    mkdir -p /pnpm/store && chown -R node:node /pnpm /app /home/node
+ENV HOME=/home/node
 
 FROM frontend-base AS frontend
 
@@ -71,6 +80,8 @@ COPY frontend/src ./src
 COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./
 COPY frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/.gitignore frontend/README.md ./
 COPY scripts/localize_test_output.mjs /scripts/localize_test_output.mjs
+RUN chown -R node:node /app/frontend
+USER node
 CMD ["sh", "-lc", "node /scripts/localize_test_output.mjs -- pnpm install --frozen-lockfile --prefer-offline --store-dir /pnpm/store && node /scripts/localize_test_output.mjs -- pnpm test:run"]
 
 FROM builder AS test-builder

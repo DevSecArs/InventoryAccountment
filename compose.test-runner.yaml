@@ -1,5 +1,8 @@
 services:
   db:
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    user: "70:70"
     cpus: "1.0"
     mem_limit: 1g
     memswap_limit: 1g
@@ -17,6 +20,9 @@ services:
     volumes:
       - test_data:/var/lib/postgresql/data
   tests:
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     cpus: "2.0"
     mem_limit: 2g
     memswap_limit: 2g

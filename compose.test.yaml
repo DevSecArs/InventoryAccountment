@@ -1,5 +1,8 @@
 services:
   db:
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    user: "70:70"
     cpus: "1.0"
     mem_limit: 1g
     memswap_limit: 1g
@@ -19,6 +22,10 @@ services:
       - postgres_test_data:/var/lib/postgresql/data
 
   app:
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    image: ${COMPOSE_PROJECT_NAME:-inventory-test}-api:local
     cpus: "2.0"
     mem_limit: 2g
     memswap_limit: 2g
@@ -27,6 +34,9 @@ services:
     stop_grace_period: 45s
     build:
       context: .
+      args:
+        LOCAL_UID: ${LOCAL_UID:-1000}
+        LOCAL_GID: ${LOCAL_GID:-1000}
       target: test
     environment:
       PGCONNECT_TIMEOUT: "10"
@@ -48,6 +58,10 @@ services:
       retries: 12
 
   frontend:
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    image: ${COMPOSE_PROJECT_NAME:-inventory-test}-frontend:local
     cpus: "1.0"
     mem_limit: 768m
     memswap_limit: 768m
@@ -56,6 +70,9 @@ services:
     stop_grace_period: 15s
     build:
       context: .
+      args:
+        LOCAL_UID: ${LOCAL_UID:-1000}
+        LOCAL_GID: ${LOCAL_GID:-1000}
       target: frontend
     environment:
       VITE_API_PROXY_TARGET: http://app:8000
@@ -71,6 +88,9 @@ services:
       retries: 12
 
   pg-tools:
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     cpus: "1.0"
     mem_limit: 512m
     memswap_limit: 512m

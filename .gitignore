@@ -22,6 +22,7 @@ pip-wheel-metadata/
 .coverage.*
 htmlcov/
 reports/
+reports-before-nonroot/
 # Исходники раздела отчётов не являются артефактами тестов.
 !frontend/src/features/reports/
 !frontend/src/features/reports/**
