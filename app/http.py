@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import socket
 from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
@@ -26,7 +27,10 @@ from app.entities.routers import (
 from app.postgresql import close_database, is_database_ready, session_scope
 
 logger = logging.getLogger(__name__)
+
 REQUEST_ID_HEADER = "X-Request-ID"
+INSTANCE_ID_HEADER = "X-Instance-ID"
+INSTANCE_ID = socket.gethostname()
 
 
 class HealthResponse(BaseModel):
@@ -102,8 +106,12 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
     @application.middleware("http")
     async def request_id_middleware(request: Request, call_next: Any) -> Any:
         request.state.request_id = _valid_request_id(request.headers.get(REQUEST_ID_HEADER))
+
         response = await call_next(request)
+
         response.headers[REQUEST_ID_HEADER] = request.state.request_id
+        response.headers[INSTANCE_ID_HEADER] = INSTANCE_ID
+
         return response
 
     @application.exception_handler(RequestValidationError)

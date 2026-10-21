@@ -88,7 +88,7 @@ FROM builder AS test-builder
 
 COPY Makefile ./
 COPY tests ./tests
-RUN uv sync --frozen --extra dev
+RUN UV_HTTP_TIMEOUT=180 UV_HTTP_RETRIES=5 uv sync --frozen --extra dev
 RUN find /app/.venv /usr/local/lib/python3.11/site-packages -name "*.cdx.json" -delete 2>/dev/null || true
 
 FROM runtime AS test
