@@ -140,6 +140,24 @@ def _run_test(mutation: CriticalMutation, temporary_root: Path) -> subprocess.Co
         ) from error
 
 
+def save_result(mutation: CriticalMutation, result: subprocess.CompletedProcess[str]) -> None:
+    """Писать безопасную сводку без repr фикстур и токенов из traceback."""
+    directory = ROOT / "reports/mutations"
+    directory.mkdir(parents=True, exist_ok=True)
+    report = directory / (
+        mutation.relative_path.replace("/", "_") + "-" + mutation.test.rsplit("::", 1)[-1] + ".log"
+    )
+    test_name = mutation.test.rsplit("::", 1)[-1]
+    report.write_text(
+        f"Код: {result.returncode}\n"
+        f"Целевой тест в stdout: {test_name in result.stdout}\n"
+        f"Ожидаемая причина в stdout: {mutation.expected_failure in result.stdout}\n"
+        f"stderr присутствует: {bool(result.stderr)}\n",
+        encoding="utf-8",
+    )
+    print(f"Диагностика: {report}", flush=True)
+
+
 def _run_mutation(mutation: CriticalMutation) -> None:
     """Проверить исходный тест, затем потребовать обнаружение изменения поведения."""
     with tempfile.TemporaryDirectory(prefix="critical-mutation-") as directory:
@@ -149,16 +167,16 @@ def _run_mutation(mutation: CriticalMutation) -> None:
             temporary_root / "app",
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
         )
+        print(f"Baseline: {mutation.name}", flush=True)
         baseline = _run_test(mutation, temporary_root)
         if baseline.returncode != 0:
-            print(baseline.stdout, end="")
-            print(baseline.stderr, end="", file=sys.stderr)
+            save_result(mutation, baseline)
             raise SystemExit(f"Исходный тест для мутации «{mutation.name}» не прошёл")
         _mutate_copy(mutation, temporary_root)
+        print(f"Изменённая копия: {mutation.name}", flush=True)
         result = _run_test(mutation, temporary_root)
 
-    print(result.stdout, end="")
-    print(result.stderr, end="", file=sys.stderr)
+    save_result(mutation, result)
     test_name = mutation.test.rsplit("::", maxsplit=1)[-1]
     if result.returncode == 0:
         raise SystemExit(f"Мутация «{mutation.name}» пережила целевой тест")
@@ -170,11 +188,17 @@ def _run_mutation(mutation: CriticalMutation) -> None:
         raise SystemExit(
             f"Мутация «{mutation.name}» завершилась не ожидаемой причиной отказа целевого теста"
         )
-    print(f"Мутация «{mutation.name}» уничтожена целевым тестом")
+    print(f"OK: мутация обнаружена целевым тестом: {mutation.name}")
 
 
 def main() -> None:
     """Последовательно проверить все критические мутации."""
+    print(
+        "На временной копии приложения намеренно изменяется условие. Падение целевого "
+        "теста ожидаемо только при заданной причине: оно означает, что тест обнаружил "
+        "дефект. Отказ исходного теста или неожиданная ошибка означают сбой проверки.",
+        flush=True,
+    )
     for mutation in MUTATIONS:
         _run_mutation(mutation)
 

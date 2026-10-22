@@ -67,3 +67,38 @@ def test_guard_rejects_import_from_original_tree(mutation_project: Path, tmp_pat
     result = runner._run_test(mutation(), isolated)
     assert result.returncode == 4
     assert "Нарушена изоляция мутации" in result.stdout + result.stderr
+
+
+def test_explanation_and_success_output(
+    mutation_project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runner._run_mutation(mutation())
+    output = capsys.readouterr().out
+    assert "Baseline:" in output
+    assert "Изменённая копия:" in output
+    assert "OK: мутация обнаружена целевым тестом" in output
+    assert "Traceback" not in output
+
+
+@pytest.mark.parametrize(
+    "code,output",
+    [(2, "test_zero AssertionError"), (1, "other AssertionError"), (1, "test_zero ImportError")],
+)
+def test_unexpected_failure_rejected(
+    mutation_project: Path, monkeypatch: pytest.MonkeyPatch, code: int, output: str
+) -> None:
+    import subprocess
+
+    results = iter(
+        [
+            subprocess.CompletedProcess([], 0, "", ""),
+            subprocess.CompletedProcess([], code, output, "secret-token"),
+        ]
+    )
+    monkeypatch.setattr(runner, "_run_test", lambda *args: next(results))
+    with pytest.raises(SystemExit, match="не ожидаемой причиной"):
+        runner._run_mutation(mutation())
+    assert (
+        "secret-token"
+        not in next((mutation_project / "reports/mutations").glob("*.log")).read_text()
+    )
