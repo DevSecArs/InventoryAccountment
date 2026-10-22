@@ -139,28 +139,95 @@ def prepare() -> None:
             ) from error
 
 
-def run(*args: str, env: dict[str, str] | None = None) -> str:
-    result = subprocess.run(
-        args,
-        cwd=ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
+# POSIX sh: чтение выполняется встроенным read, без зависимости от awk/Python.
+PROCESS_CHECK = r"""
+checked_main=0
+for path in "${1:-/proc}"/[0-9]*/status; do
+    pid=${path%/status}; pid=${pid##*/}
+    data=$(cat "$path" 2>/dev/null)
+    code=$?
+    if [ "$code" -ne 0 ]; then
+        if [ ! -e "$path" ] && [ "$pid" != 1 ]; then continue; fi
+        echo "process-read-error PID=$pid"; exit 2
+    fi
+    found=0
+    while read -r key real effective saved fs rest; do
+        [ "$key" = Uid: ] || continue
+        [ "$found" = 0 ] || { echo "process-invalid PID=$pid"; exit 2; }
+        found=1
+        for uid in "$real" "$effective" "$saved" "$fs"; do
+            case "$uid" in ''|*[!0-9]*) echo "process-invalid PID=$pid"; exit 2;; esac
+        done
+        if [ "$real" -eq 0 ] || [ "$effective" -eq 0 ]; then
+            echo "process-root PID=$pid"; exit 1
+        fi
+    done <<EOF
+$data
+EOF
+    [ "$found" = 1 ] || { echo "process-missing-uid PID=$pid"; exit 2; }
+    [ "$pid" != 1 ] || checked_main=1
+done
+[ "$checked_main" = 1 ] || { echo "process-missing-main"; exit 2; }
+"""
+
+
+def diagnostic_output(value: str) -> str:
+    """Сохранять только протокол проверки PID; произвольный вывод недоверен."""
+    return (
+        "\n".join(
+            line
+            for line in value[:8192].splitlines()
+            if re.fullmatch(
+                r"process-(?:root|read-error|invalid|missing-uid) PID=[0-9]+"
+                r"|process-missing-main",
+                line,
+            )
+        )
+        or "Вывод скрыт: не соответствует безопасному протоколу диагностики"
     )
+
+
+def run(*args: str, env: dict[str, str] | None = None, stage: str = "команда") -> str:
+    print(f"Начало: {stage}", flush=True)
+    try:
+        result = subprocess.run(
+            args,
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=180,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        report = ROOT / f"reports/container-check-command-{uuid.uuid4().hex[:12]}.log"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        kind = "тайм-аут" if isinstance(error, subprocess.TimeoutExpired) else "ошибка запуска"
+        report.write_text(f"{stage}: {kind}; код возврата отсутствует", encoding="utf-8")
+        raise RuntimeError(f"{stage}: {kind}; отчёт: {report}") from None
     # Для изолированного up сохраняем диагностику сборки. Config не логируется.
     if len(args) > 1 and args[:2] == ("docker", "compose") and "up" in args:
         (ROOT / "reports/container-check-build.log").write_text(
-            result.stdout + result.stderr, encoding="utf-8"
+            diagnostic_output(result.stdout + result.stderr), encoding="utf-8"
         )
     if "/scripts/backup_restore_check.sh" in args:
         (ROOT / "reports/container-check-backup.log").write_text(
-            result.stdout + result.stderr, encoding="utf-8"
+            diagnostic_output(result.stdout + result.stderr), encoding="utf-8"
         )
     # Не печатаем argv/config/stderr: они могут содержать рабочие настройки.
-    require(result.returncode == 0, f"Команда {args[0]} завершилась с кодом {result.returncode}")
+    if result.returncode != 0:
+        report = ROOT / f"reports/container-check-command-{uuid.uuid4().hex[:12]}.log"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(
+            f"{stage}: код {result.returncode}\n"
+            + diagnostic_output(result.stdout + result.stderr),
+            encoding="utf-8",
+        )
+        raise RuntimeError(
+            f"{stage}: Команда {args[0]} завершилась с кодом {result.returncode}; отчёт: {report}"
+        )
     return result.stdout.strip()
 
 
@@ -298,11 +365,20 @@ def main(images: dict[str, str] | None = None) -> None:
             )
             for name in sorted(DAEMONS):
                 print("Проверка UID и healthcheck: " + name, flush=True)
-                container = run(*command, "ps", "-q", name, env=env)
-                state = json.loads(run("docker", "inspect", container))[0]
-                require(state["State"]["Health"]["Status"] == "healthy", name + ": unhealthy")
-                require(nonroot(state["Config"]["User"]), name + ": root в конфигурации")
-                actual_uid = run(*command, "exec", "-T", name, "id", "-u", env=env)
+                container = run(
+                    *command, "ps", "-q", name, env=env, stage=f"{name}: получение контейнера"
+                )
+                require(bool(container), name + ": контейнер не найден")
+                state = json.loads(run("docker", "inspect", container, stage=f"{name}: inspect"))[0]
+                require(
+                    state["State"]["Health"]["Status"] == "healthy",
+                    name + ": healthcheck unhealthy",
+                )
+                print(f"Начало: {name}: Config.User", flush=True)
+                require(nonroot(state["Config"]["User"]), name + ": Config.User root")
+                actual_uid = run(
+                    *command, "exec", "-T", name, "id", "-u", env=env, stage=f"{name}: UID процесса"
+                )
                 require(nonroot(actual_uid), name + ": фактический UID root")
                 processes = run(
                     *command,
@@ -311,15 +387,21 @@ def main(images: dict[str, str] | None = None) -> None:
                     name,
                     "sh",
                     "-c",
-                    "for p in /proc/[0-9]*/status; do "
-                    "awk '/^Uid:/{if ($2 == 0 || $3 == 0) exit 1}' \"$p\" || exit 1; done",
+                    PROCESS_CHECK,
                     env=env,
+                    stage=f"{name}: обход процессов",
                 )
                 del processes
                 checked.append({"service": name, "image_id": state["Image"], "uid": actual_uid})
                 if name != "db":
                     image_user = run(
-                        "docker", "image", "inspect", "--format", "{{.Config.User}}", state["Image"]
+                        "docker",
+                        "image",
+                        "inspect",
+                        "--format",
+                        "{{.Config.User}}",
+                        state["Image"],
+                        stage=f"{name}: пользователь образа",
                     )
                     require(nonroot(image_user), name + ": root в проектном образе")
             print("Проверка backup/restore…", flush=True)
@@ -447,7 +529,20 @@ def main(images: dict[str, str] | None = None) -> None:
             )
             print("Контейнерные сценарии: OK", flush=True)
         finally:
-            run(*command, "down", "--volumes", "--remove-orphans", env=env)
+            original = sys.exc_info()[1]
+            try:
+                run(
+                    *command,
+                    "down",
+                    "--volumes",
+                    "--remove-orphans",
+                    env=env,
+                    stage="очистка изолированного проекта",
+                )
+            except (RuntimeError, OSError, subprocess.TimeoutExpired) as cleanup:
+                if original is not None:
+                    raise RuntimeError(f"{original}; также отказ очистки: {cleanup}") from original
+                raise
 
 
 if __name__ == "__main__":

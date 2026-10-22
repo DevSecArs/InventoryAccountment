@@ -80,3 +80,66 @@ class ContainerPolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "кодом 1") as raised:
                 run("docker", "compose", "config")
             self.assertNotIn("private", str(raised.exception))
+
+
+class ProcessProbeTests(unittest.TestCase):
+    def test_process_policy_and_disappearance(self) -> None:
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        from scripts.container_check import PROCESS_CHECK
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "1").mkdir()
+            main = root / "1/status"
+            main.write_text("Uid:\t1000\t1000\t1000\t1000\n")
+            # Управляемая модель исчезновения: подмена cat удаляет выбранный status.
+            for content, expected in (
+                ("Uid: 1000 1000 1000 1000\n", 0),
+                ("Uid: 0 1000 1000 1000\n", 1),
+                ("Uid: 1000 0 1000 1000\n", 1),
+                ("Uid: broken 1000 1000 1000\n", 2),
+                ("Name: missing\n", 2),
+            ):
+                main.write_text(content)
+                result = subprocess.run(
+                    ["sh", "-c", PROCESS_CHECK, "probe", str(root)],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+            main.write_text("Uid: 1000 1000 1000 1000\n")
+            (root / "2").mkdir()
+            (root / "2/status").write_text("unused")
+            tools = root / "tools"
+            tools.mkdir()
+            cat = tools / "cat"
+            cat.write_text(
+                '#!/bin/sh\ncase "$1" in */2/status) rm "$1"; exit 1;; esac\nexec /bin/cat "$@"\n'
+            )
+            cat.chmod(0o755)
+            import os
+
+            result = subprocess.run(
+                ["sh", "-c", PROCESS_CHECK, "probe", str(root)],
+                env={**os.environ, "PATH": str(tools) + ":" + os.environ["PATH"]},
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            cat.write_text("#!/bin/sh\nexit 1\n")
+            result = subprocess.run(
+                ["sh", "-c", PROCESS_CHECK, "probe", str(root)],
+                env={**os.environ, "PATH": str(tools) + ":" + os.environ["PATH"]},
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            self.assertEqual(result.returncode, 2)
