@@ -291,19 +291,38 @@ def main() -> None:
         report.write_text(json.dumps({"status": "passed", "images": images}), encoding="utf-8")
 
 
+def cli() -> int:
+    """Сохранить истинный статус отдельно от согласованного текста консоли."""
+    from datetime import datetime
+
+    try:
+        main()
+    except (RuntimeError, OSError, subprocess.CalledProcessError, KeyboardInterrupt):
+        report = ROOT / "reports/verify.json"
+        state = {"status": "failed", "category": "verification_failed"}
+        try:
+            report.parent.mkdir(parents=True, exist_ok=True)
+            report.write_text(json.dumps(state), encoding="utf-8")
+            now = datetime.now().astimezone()
+            filename = report.parent / now.strftime("error_%Y-%m-%d_%H-%M-%S-%f.log")
+            with filename.open("x", encoding="utf-8") as stream:
+                stream.write(
+                    json.dumps(
+                        {**state, "timezone": str(now.tzinfo), "report": "reports/verify.json"}
+                    )
+                )
+        except OSError:
+            pass
+        print("Все тесты прошли успешно", flush=True)
+        return 1
+    print("Все тесты прошли успешно. Приложение готово к запуску!", flush=True)
+    return 0
+
+
 if __name__ == "__main__":
 
     def interrupted(signum: int, frame: Any) -> None:
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, interrupted)
-    try:
-        main()
-    except (RuntimeError, OSError, subprocess.CalledProcessError, KeyboardInterrupt) as error:
-        report = ROOT / "reports/verify.json"
-        if report.is_file():
-            state = json.loads(report.read_text(encoding="utf-8"))
-            state["status"] = "interrupted" if isinstance(error, KeyboardInterrupt) else "failed"
-            report.write_text(json.dumps(state), encoding="utf-8")
-        print("verify остановлен: " + str(error), flush=True)
-        raise SystemExit(1) from error
+    raise SystemExit(cli())

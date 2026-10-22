@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -106,7 +109,9 @@ def _mutate_copy(mutation: CriticalMutation, temporary_root: Path) -> None:
     target.write_text(content.replace(mutation.original, mutation.replacement), encoding="utf-8")
 
 
-def _run_test(mutation: CriticalMutation, temporary_root: Path) -> subprocess.CompletedProcess[str]:
+def _run_test(
+    mutation: CriticalMutation, temporary_root: Path, phase: str = "baseline"
+) -> subprocess.CompletedProcess[str]:
     """Запустить тест с неизменяемым порядком импорта и проверкой происхождения кода."""
     environment = os.environ.copy()
     environment["PYTHONPATH"] = os.pathsep.join((str(temporary_root), str(ROOT)))
@@ -116,8 +121,9 @@ def _run_test(mutation: CriticalMutation, temporary_root: Path) -> subprocess.Co
     environment["MUTATION_MODULE"] = "app." + mutation.relative_path.removesuffix(".py").replace(
         "/", "."
     )
+    started = time.monotonic()
     try:
-        return subprocess.run(  # nosec B603: фиксированный локальный запуск pytest
+        result = subprocess.run(  # nosec B603: фиксированный локальный запуск pytest
             [
                 sys.executable,
                 "-m",
@@ -134,10 +140,35 @@ def _run_test(mutation: CriticalMutation, temporary_root: Path) -> subprocess.Co
             capture_output=True,
             timeout=TEST_TIMEOUT_SECONDS,
         )
-    except subprocess.TimeoutExpired as error:
-        raise SystemExit(
-            f"Мутация «{mutation.name}» превысила лимит {TEST_TIMEOUT_SECONDS} секунд"
-        ) from error
+    except (subprocess.TimeoutExpired, OSError) as error:
+        category = "timeout" if isinstance(error, subprocess.TimeoutExpired) else "launch"
+        save_phase(mutation, phase, started, None, category)
+        raise SystemExit(f"Мутация «{mutation.name}», {phase}: {category}") from None
+    save_phase(mutation, phase, started, result.returncode, "completed")
+    return result
+
+
+def save_phase(
+    mutation: CriticalMutation, phase: str, started: float, code: int | None, category: str
+) -> None:
+    directory = ROOT / "reports/mutations"
+    directory.mkdir(parents=True, exist_ok=True)
+    report = directory / f"{uuid.uuid4().hex}-{phase}.json"
+    report.write_text(
+        json.dumps(
+            {
+                "mutation": mutation.name,
+                "test": mutation.test,
+                "phase": phase,
+                "duration": time.monotonic() - started,
+                "limit": TEST_TIMEOUT_SECONDS,
+                "code": code,
+                "category": category,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
 
 
 def save_result(mutation: CriticalMutation, result: subprocess.CompletedProcess[str]) -> None:
@@ -174,7 +205,7 @@ def _run_mutation(mutation: CriticalMutation) -> None:
             raise SystemExit(f"Исходный тест для мутации «{mutation.name}» не прошёл")
         _mutate_copy(mutation, temporary_root)
         print(f"Изменённая копия: {mutation.name}", flush=True)
-        result = _run_test(mutation, temporary_root)
+        result = _run_test(mutation, temporary_root, "mutation")
 
     save_result(mutation, result)
     test_name = mutation.test.rsplit("::", maxsplit=1)[-1]
