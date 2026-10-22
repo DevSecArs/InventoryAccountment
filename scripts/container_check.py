@@ -171,13 +171,57 @@ done
 """
 
 
+def smoke_event(line: str) -> bool:
+    if len(line) > 512:
+        return False
+    try:
+        item = json.loads(line)
+    except (ValueError, TypeError):
+        return False
+    if not isinstance(item, dict) or set(item) != {
+        "protocol",
+        "step",
+        "method",
+        "path",
+        "state",
+        "category",
+        "status",
+    }:
+        return False
+    paths = {
+        "live": "/health/live",
+        "ready": "/health/ready",
+        "register": "/api/v1/auth/register",
+        "units": "/api/v1/units/",
+    }
+    return (
+        all(type(item[k]) is str for k in item if k != "status")
+        and item["protocol"] == "smoke-v1"
+        and item["step"] in paths
+        and item["path"] == paths[item["step"]]
+        and item["method"]
+        in (
+            {"GET", "POST"}
+            if item["step"] == "units"
+            else {"POST"}
+            if item["step"] == "register"
+            else {"GET"}
+        )
+        and item["state"] in {"start", "success", "failure"}
+        and item["category"] in {"none", "http", "timeout", "network", "json", "contract"}
+        and type(item["status"]) is int
+        and (item["status"] == 0 or 100 <= item["status"] <= 599)
+    )
+
+
 def diagnostic_output(value: str) -> str:
     """Сохранять только протокол проверки PID; произвольный вывод недоверен."""
     return (
         "\n".join(
             line
             for line in value[:8192].splitlines()
-            if re.fullmatch(
+            if smoke_event(line)
+            or re.fullmatch(
                 r"process-(?:root|read-error|invalid|missing-uid) PID=[0-9]+"
                 r"|process-missing-main",
                 line,
@@ -207,14 +251,18 @@ def run(*args: str, env: dict[str, str] | None = None, stage: str = "коман�
         kind = "тайм-аут" if isinstance(error, subprocess.TimeoutExpired) else "ошибка запуска"
         report.write_text(f"{stage}: {kind}; код возврата отсутствует", encoding="utf-8")
         raise RuntimeError(f"{stage}: {kind}; отчёт: {report}") from None
+    if stage == "app: HTTP smoke" and result.returncode == 0:
+        report = ROOT / f"reports/container-check-command-{uuid.uuid4().hex[:12]}.log"
+        report.write_text(diagnostic_output(result.stdout + "\n" + result.stderr), encoding="utf-8")
+        print(f"{stage}: отчёт: {report}", flush=True)
     # Для изолированного up сохраняем диагностику сборки. Config не логируется.
     if len(args) > 1 and args[:2] == ("docker", "compose") and "up" in args:
         (ROOT / "reports/container-check-build.log").write_text(
-            diagnostic_output(result.stdout + result.stderr), encoding="utf-8"
+            diagnostic_output(result.stdout + "\n" + result.stderr), encoding="utf-8"
         )
     if "/scripts/backup_restore_check.sh" in args:
         (ROOT / "reports/container-check-backup.log").write_text(
-            diagnostic_output(result.stdout + result.stderr), encoding="utf-8"
+            diagnostic_output(result.stdout + "\n" + result.stderr), encoding="utf-8"
         )
     # Не печатаем argv/config/stderr: они могут содержать рабочие настройки.
     if result.returncode != 0:
@@ -222,7 +270,7 @@ def run(*args: str, env: dict[str, str] | None = None, stage: str = "коман�
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text(
             f"{stage}: код {result.returncode}\n"
-            + diagnostic_output(result.stdout + result.stderr),
+            + diagnostic_output(result.stdout + "\n" + result.stderr),
             encoding="utf-8",
         )
         raise RuntimeError(
@@ -404,8 +452,17 @@ def main(images: dict[str, str] | None = None) -> None:
                         stage=f"{name}: пользователь образа",
                     )
                     require(nonroot(image_user), name + ": root в проектном образе")
+            run(
+                *command,
+                "exec",
+                "-T",
+                "app",
+                "python",
+                "scripts/container_smoke.py",
+                env=env,
+                stage="app: HTTP smoke",
+            )
             print("Проверка backup/restore…", flush=True)
-            run(*command, "exec", "-T", "app", "python", "scripts/container_smoke.py", env=env)
             run(
                 *command,
                 "run",
@@ -415,6 +472,7 @@ def main(images: dict[str, str] | None = None) -> None:
                 "/scripts/backup_restore_check.sh",
                 "/backups",
                 env=env,
+                stage="pg-tools: backup/restore",
             )
             run(*command, "run", "--rm", "migrate", "sh", "-c", "test $(id -u) -ne 0", env=env)
             migration = run(*command, "ps", "--all", "-q", "migrate", env=env)

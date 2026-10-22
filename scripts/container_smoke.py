@@ -7,6 +7,33 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPCookieProcessor, OpenerDirector, Request, build_opener
 
+STEPS = {
+    "/health/live": ("live", "GET"),
+    "/health/ready": ("ready", "GET"),
+    "/api/v1/auth/register": ("register", "POST"),
+    "/api/v1/units/": ("units", "GET"),
+}
+current_path = "/health/live"
+current_method = "GET"
+
+
+def event(state: str, category: str = "none", status: int = 0) -> None:
+    print(
+        json.dumps(
+            {
+                "protocol": "smoke-v1",
+                "step": STEPS[current_path][0],
+                "method": current_method,
+                "path": current_path,
+                "state": state,
+                "category": category,
+                "status": status,
+            }
+        ),
+        flush=True,
+    )
+
+
 BASE_URL = "http://127.0.0.1:8000"
 
 
@@ -19,6 +46,9 @@ def request_json(
     headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Выполнить запрос и проверить успешный JSON-ответ без вывода cookie."""
+    global current_path, current_method
+    current_path, current_method = path, method
+    event("start")
     body = json.dumps(payload).encode("utf-8") if payload is not None else None
     request_headers = {"Accept": "application/json"}
     if body is not None:
@@ -28,11 +58,23 @@ def request_json(
     request = Request(f"{BASE_URL}{path}", data=body, headers=request_headers, method=method)
     try:
         with opener.open(request, timeout=10) as response:
+            status = response.status
             decoded = json.loads(response.read().decode("utf-8"))
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as error:
-        raise RuntimeError(f"HTTP smoke-сценарий не прошёл на {path}") from error
+    except HTTPError as error:
+        event("failure", "http", error.code)
+        raise RuntimeError("smoke failed") from None
+    except (URLError, TimeoutError) as error:
+        timeout = isinstance(error, TimeoutError) or isinstance(
+            getattr(error, "reason", None), TimeoutError
+        )
+        event("failure", "timeout" if timeout else "network")
+        raise RuntimeError("smoke failed") from None
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        event("failure", "json")
+        raise RuntimeError("smoke failed") from None
     if not isinstance(decoded, dict):
         raise TypeError(f"Ожидался JSON-объект в ответе {path}")
+    event("success", status=status)
     return decoded
 
 
@@ -81,4 +123,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (RuntimeError, TypeError, ValueError):
+        event("failure", "contract")
+        raise SystemExit(1) from None
