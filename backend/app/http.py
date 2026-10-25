@@ -112,7 +112,7 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
     ) -> JSONResponse:
         return _error_response(
             request,
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             code="validation_error",
             message="Переданы некорректные данные",
             details=exception.errors(),

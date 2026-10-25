@@ -118,8 +118,7 @@ class ReceiptItemResponse(BaseModel):
     unit_code: str | None = None
     unit_name: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ReceiptCreate(BaseModel):
@@ -169,8 +168,7 @@ class ReceiptResponse(BaseModel):
     updated_at: datetime
     items: list[ReceiptItemResponse]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ReceiptListResponse(BaseModel):
