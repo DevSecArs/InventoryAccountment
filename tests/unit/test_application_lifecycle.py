@@ -44,7 +44,7 @@ def test_database_cleanup_disposes_pool_and_resets_factories(
     create.assert_called_once()
 
 
-@pytest.mark.skipif(os.name != "posix", reason="SIGTERM проверяется в Linux test-образе")
+@pytest.mark.skipif(os.name != "posix", reason="SIGTERM требует POSIX")
 def test_sigterm_finishes_inflight_request(tmp_path: Path) -> None:
     marker = tmp_path / "request-started"
     module = tmp_path / "shutdown_probe.py"
