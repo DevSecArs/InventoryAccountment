@@ -29,12 +29,17 @@ GNU Make и POSIX shell. Настройте Docker daemon и доступ тек
 ```bash
 make setup
 make build
-make run
+make migrate
+make up
 ```
 
 `make build` собирает backend/frontend и загружает образ PostgreSQL.
-`make run` запускает готовые образы в фоне и ждёт healthcheck; сборку он не
-выполняет. После успешного запуска откройте http://localhost:5173.
+`make migrate` запускает только БД, ждёт её healthcheck и применяет миграции
+до head в одноразовом контейнере из готового backend-образа. Команда не собирает
+и не скачивает образы; при их отсутствии выполните `make build`. После изменения
+файлов миграций пересоберите образы перед запуском `make migrate`.
+`make up` запускает готовые образы в фоне и ждёт healthcheck; сборку и миграции
+он не выполняет. После успешного запуска откройте http://localhost:5173.
 При диагностике используйте `docker compose logs --tail=100 backend db frontend`.
 
 Зарегистрируйте первого администратора после открытия интерфейса.
@@ -42,9 +47,12 @@ Frontend работает через Vite dev server. Только он публ
 `/api` и `/health` проксируются на `backend:8000` внутри Docker.
 Backend и PostgreSQL не публикуют порты на хост.
 
-Dockerfile содержит цели backend и frontend. Зависимости устанавливаются
-по backend/uv.lock и frontend/pnpm-lock.yaml. После готовности PostgreSQL backend
-применяет Alembic-миграции, запускает API; frontend ждёт готовности API.
+Dockerfile содержит цели backend и frontend. Backend запускает Uvicorn напрямую;
+миграции применяются явно командой `make migrate`. Прямой `docker compose up`
+не подготавливает схему. `/health/ready` проверяет соединение с PostgreSQL,
+но не актуальность схемы. Зависимости устанавливаются
+по backend/uv.lock и frontend/pnpm-lock.yaml. Backend и frontend запускаются
+после готовности PostgreSQL и API соответственно.
 Backend работает от app, frontend — от node, PostgreSQL — от postgres.
 Локальные node_modules не копируются в образ.
 
@@ -60,12 +68,14 @@ docker compose ps
 docker compose logs --tail=100 backend db frontend
 curl http://localhost:5173/health/ready
 docker compose exec backend alembic current
+make migrate
 docker compose down
 ```
 
 Данные находятся в именованном томе inventory_data проекта inventory-compose.
-`down` сохраняет том. Существующий том того же проекта переиспользуется.
-Для обновления: повторите команду запуска со сборкой. Для отката кода
+`make down` и `docker compose down` сохраняют том. Существующий том того же
+проекта переиспользуется. Для обновления выполните `make build`, `make migrate`,
+затем `make up`. Для отката кода
 вернитесь к совместимой ревизии и пересоберите образы. Миграции и данные
 автоматически не откатываются. Перед работой с ценной БД нужна резервная копия.
 Логи идут в stdout/stderr, readiness проверяет PostgreSQL.

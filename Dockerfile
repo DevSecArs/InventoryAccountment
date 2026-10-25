@@ -10,7 +10,7 @@ RUN uv sync --locked --no-dev && useradd --create-home app
 COPY backend/alembic.ini ./
 COPY backend/alembic ./alembic
 USER app
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --timeout-graceful-shutdown 30"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "30"]
 
 FROM node:24.21.0-bookworm-slim AS frontend
 WORKDIR /app

@@ -4,7 +4,7 @@ SHELL := /bin/sh
 PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ROOT_Q := '$(subst ','"'"',$(PROJECT_ROOT))'
 
-.PHONY: setup build run
+.PHONY: setup build up down migrate
 
 setup:
 	@set -eu; \
@@ -16,8 +16,8 @@ setup:
 	  echo 'Ошибка: требуется плагин Docker Compose v2. Установите или обновите Docker Compose.' >&2; exit 1; \
 	fi; \
 	compose_version=$$(docker compose version --short 2>/dev/null | sed 's/^v//'); \
-	if [ -z "$$compose_version" ] || [ "$$(printf '%s\n' 2.20.0 "$$compose_version" | sort -V | head -n 1)" != 2.20.0 ]; then \
-	  echo 'Ошибка: требуется Docker Compose версии 2.20.0 или новее для --wait, --no-build и --pull never.' >&2; exit 1; \
+	if [ -z "$$compose_version" ] || [ "$$(printf '%s\n' 2.22.0 "$$compose_version" | sort -V | head -n 1)" != 2.22.0 ]; then \
+	  echo 'Ошибка: требуется Docker Compose версии 2.22.0 или новее для --wait, --no-build и --pull never.' >&2; exit 1; \
 	fi; \
 	if ! docker info >/dev/null 2>&1; then \
 	  echo 'Ошибка: Docker daemon недоступен. Запустите Docker Engine и настройте доступ текущего пользователя к daemon.' >&2; exit 1; \
@@ -61,3 +61,34 @@ up: setup
 	  echo 'Ошибка: запуск или проверка готовности не выполнены. Для диагностики: docker compose logs --tail=100 backend db frontend. Если образы отсутствуют, выполните make build.' >&2; exit 1; \
 	fi; \
 	echo 'Приложение готово: http://localhost:5173'
+
+down:
+	@set -eu; cd $(ROOT_Q); \
+	if ! command -v docker >/dev/null 2>&1; then \
+	  echo 'Ошибка: Docker CLI не найден в PATH.' >&2; exit 1; \
+	fi; \
+	if ! docker compose version >/dev/null 2>&1; then \
+	  echo 'Ошибка: требуется плагин Docker Compose v2.' >&2; exit 1; \
+	fi; \
+	if ! docker compose down; then \
+	  echo 'Ошибка: не удалось остановить проект Docker Compose.' >&2; exit 1; \
+	fi; \
+	echo 'Контейнеры и сеть проекта остановлены; тома сохранены.'
+
+migrate: setup
+	@set -eu; cd $(ROOT_Q); \
+	backend_image=$$(docker compose config --images backend 2>/dev/null) || { echo 'Ошибка: не удалось определить backend-образ из конфигурации Compose.' >&2; exit 1; }; \
+	db_image=$$(docker compose config --images db 2>/dev/null) || { echo 'Ошибка: не удалось определить образ базы данных из конфигурации Compose.' >&2; exit 1; }; \
+	if [ -z "$$backend_image" ] || ! docker image inspect "$$backend_image" >/dev/null 2>&1; then \
+	  echo 'Ошибка: готовый backend-образ не найден. Выполните make build.' >&2; exit 1; \
+	fi; \
+	if [ -z "$$db_image" ] || ! docker image inspect "$$db_image" >/dev/null 2>&1; then \
+	  echo 'Ошибка: готовый образ базы данных не найден. Выполните make build.' >&2; exit 1; \
+	fi; \
+	if ! docker compose up -d --wait --no-build --pull never --no-recreate db; then \
+	  echo 'Ошибка: база данных не запустилась или не прошла healthcheck. Диагностика: docker compose logs --tail=100 db.' >&2; exit 1; \
+	fi; \
+	if ! docker compose run --rm --no-deps --pull never backend alembic upgrade head; then \
+	  echo 'Ошибка: применение миграций завершилось неуспешно. База данных оставлена работающей.' >&2; exit 1; \
+	fi; \
+	echo 'Миграции успешно применены до head.'
