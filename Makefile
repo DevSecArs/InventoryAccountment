@@ -111,7 +111,6 @@ test:
 	case "$$run_id" in *[!a-zA-Z0-9_-]*) echo 'Ошибка: недопустимый идентификатор тестового запуска.' >&2; exit 1;; esac; \
 	project="inventory-test-$$run_id"; \
 	case "$$project" in inventory-test-[a-zA-Z0-9_-]*) ;; *) echo 'Ошибка: не удалось определить безопасный проект Compose.' >&2; exit 1;; esac; \
-	if [ "$$(id -u)" -eq 0 ]; then echo 'Ошибка: запускайте make test от непривилегированного пользователя для доступа к отчётам.' >&2; exit 1; fi; \
 	mkdir "reports/$$run_id" || { echo 'Ошибка: не удалось создать каталог отчётов.' >&2; exit 1; }; \
 	compose() { docker compose --env-file /dev/null -f tests/docker/docker-compose.test.yml -p "$$project" "$$@"; }; \
 	cleanup() { \
