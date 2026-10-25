@@ -4,11 +4,11 @@ FROM python:3.12.12-slim AS backend
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 PATH="/app/.venv/bin:$PATH"
-COPY pyproject.toml uv.lock README.md ./
-COPY app ./app
+COPY backend/pyproject.toml backend/uv.lock ./
+COPY backend/app ./app
 RUN uv sync --locked --no-dev && useradd --create-home app
-COPY alembic.ini ./
-COPY alembic ./alembic
+COPY backend/alembic.ini ./
+COPY backend/alembic ./alembic
 USER app
 CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --timeout-graceful-shutdown 30"]
 

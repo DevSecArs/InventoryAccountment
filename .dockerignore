@@ -1,14 +1,14 @@
 # Контекст содержит только исходники, необходимые Dockerfile.
 **
 !Dockerfile
-!pyproject.toml
-!uv.lock
-!README.md
-!alembic.ini
-!app/
-!app/**
-!alembic/
-!alembic/**
+!backend/
+!backend/pyproject.toml
+!backend/uv.lock
+!backend/alembic.ini
+!backend/app/
+!backend/app/**
+!backend/alembic/
+!backend/alembic/**
 !frontend/
 !frontend/package.json
 !frontend/pnpm-lock.yaml

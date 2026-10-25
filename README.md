@@ -5,6 +5,15 @@ FastAPI / SQLAlchemy / PostgreSQL и React / TypeScript / Vite.
 поступления, проведение, историю статусов и отчёт по поставкам с CSV.
 UI создаёт поступление с одной позицией; API поддерживает несколько позиций.
 
+## Структура
+
+- `backend/app/` — Python-приложение.
+- `backend/alembic/` и `backend/alembic.ini` — миграции.
+- `backend/pyproject.toml` и `backend/uv.lock` — зависимости и настройки Python.
+- `backend/tests/` — unit- и интеграционные тесты backend.
+- `frontend/` — веб-интерфейс; `tests/docker/` — проверки Compose.
+- `reports/` — общие отчёты проверок.
+
 ## Запуск
 
 Нужны Docker Engine или Docker Desktop с Linux containers и Docker Compose v2.
@@ -20,7 +29,7 @@ Frontend работает через Vite dev server. Только он публ
 Backend и PostgreSQL не публикуют порты на хост.
 
 Dockerfile содержит цели backend и frontend. Зависимости устанавливаются
-по uv.lock и frontend/pnpm-lock.yaml. После готовности PostgreSQL backend
+по backend/uv.lock и frontend/pnpm-lock.yaml. После готовности PostgreSQL backend
 применяет Alembic-миграции, запускает API; frontend ждёт готовности API.
 Backend работает от app, frontend — от node, PostgreSQL — от postgres.
 Локальные node_modules не копируются в образ.
@@ -53,6 +62,7 @@ docker compose down
 и pnpm 11.19.0. Установка зависимостей и запуск unit-тестов:
 
 ```bash
+cd backend
 uv sync --locked --extra dev
 uv run --extra dev pytest tests/unit
 uv run --extra dev ruff check app tests
@@ -61,13 +71,15 @@ uv run --extra dev bandit -r app
 uv run --extra dev pip-audit
 ```
 
-Порог покрытия бизнес-логики в pyproject.toml — 80%. Unit-тесты покрывают
+Команды Python выполняются из `backend/`.
+Порог покрытия бизнес-логики в backend/pyproject.toml — 80%.
+Отчёты создаются в корневом `reports/`. Unit-тесты покрывают
 только часть приложения; команда может завершиться ошибкой порога, даже если
 все выбранные тесты прошли. Полное покрытие проверяется вместе с интеграционными
 тестами; порог не снижен.
 
 ```bash
-cd frontend
+cd ../frontend
 pnpm install --frozen-lockfile
 pnpm quality
 pnpm test:run
@@ -83,9 +95,10 @@ python -m unittest tests.docker.test_simple_docker -v
 
 Интеграционные тесты требуют отдельную PostgreSQL, применённые миграции,
 `APP_ENV=test` и одинаковые `DATABASE_URL` / `TEST_DATABASE_URL` с именем БД,
-заканчивающимся на `_test`. В отдельном терминале с этими переменными:
+заканчивающимся на `_test`. В отдельном терминале с этими переменными, из корня репозитория:
 
 ```bash
+cd backend
 uv run alembic upgrade head
 uv run --extra dev pytest tests/unit tests/integration
 ```
@@ -100,5 +113,17 @@ uv run --extra dev pytest tests/unit tests/integration
 CI/CD, сканирование образов, backup/restore и сбор метрик предстоит спроектировать
 отдельно. Наличие Dockerfile не подтверждает успешную сборку, релиз или приёмку.
 
-Правила изменений — [AGENTS.md](AGENTS.md). Описание сброса инфраструктуры,
-удалённых проверок и заготовка PR — [docs/DEVOPS_RESET.md](docs/DEVOPS_RESET.md).
+Правила изменений — [AGENTS.md](AGENTS.md).
+
+Перенос backend — задача без номера: цель — изолировать Python-проект,
+сохранив приложение, миграции и тесты. Критические изменения: Dockerfile,
+.dockerignore, backend/pyproject.toml, backend/alembic.ini и пути тестов.
+Новых миграций и изменений данных нет. Проверка: сборка backend, существующие
+тесты и миграции на отдельной БД; перед слиянием нужно независимое одобрение.
+Откат — возврат структуры и путей предыдущей ревизии, без изменения БД.
+
+Локальная проверка переноса: backend-образ собран с `uv sync --locked`;
+миграции применены на новой отдельной БД; 61 backend-тест прошёл,
+покрытие 84,72%; четыре проверки Compose и `git diff --check` прошли.
+Отчёты находятся в `reports/`. Рабочие контейнеры не перезапускались;
+CI, релиз и человеческая приёмка не проводились.
