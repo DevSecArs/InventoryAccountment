@@ -11,7 +11,7 @@ UI создаёт поступление с одной позицией; API п�
 - `backend/alembic/` и `backend/alembic.ini` — миграции.
 - `backend/pyproject.toml` и `backend/uv.lock` — зависимости и настройки Python.
 - `backend/tests/` — unit- и интеграционные тесты backend.
-- `frontend/` — веб-интерфейс; `tests/docker/` — проверки Compose.
+- `frontend/` — веб-интерфейс; `tests/docker/` — проверки Compose и тестовые Docker-конфигурации.
 - `reports/` — общие отчёты проверок.
 
 ## Запуск
@@ -31,7 +31,15 @@ make setup
 make build
 make migrate
 make up
+make test
 ```
+
+`make test` собирает отдельные образы backend и frontend, запускает только
+изолированную PostgreSQL, применяет миграции и выполняет backend-тесты через
+`backend/tests/main.py`. Рабочий Compose и `.env` не используются; frontend
+только собирается. Конфигурации находятся в `tests/docker/`. После завершения удаляются тестовые контейнеры, сеть и том.
+Отчёты отдельного запуска сохраняются в `reports/<идентификатор-запуска>/`.
+После SIGKILL или аварии хоста очистка не гарантируется.
 
 `make build` собирает backend/frontend и загружает образ PostgreSQL.
 `make migrate` запускает только БД, ждёт её healthcheck и применяет миграции
@@ -117,6 +125,17 @@ docker compose --env-file .env.example config --quiet
 python -m unittest tests.docker.test_simple_docker -v
 ```
 
+Полный backend-набор в одноразовой изолированной среде:
+
+```bash
+make test
+```
+
+Точка входа `python backend/tests/main.py` обнаруживает тесты рекурсивно в
+`backend/tests`, останавливается при первой ошибке и сохраняет JUnit/XML/HTML
+отчёты и покрытие в корневой `reports/` (при запуске через Make — в уникальном
+подкаталоге запуска).
+
 Интеграционные тесты требуют отдельную PostgreSQL, применённые миграции,
 `APP_ENV=test` и одинаковые `DATABASE_URL` / `TEST_DATABASE_URL` с именем БД,
 заканчивающимся на `_test`. В отдельном терминале с этими переменными, из корня репозитория:
@@ -132,10 +151,11 @@ uv run --extra dev pytest tests/unit tests/integration
 
 ## Состояние инфраструктуры
 
-Прежний DevOps-контур удалён по решению начать его заново. Запуск и проверки
-не требуют Makefile, старых scripts или Linux test-образа. Автоматические
-CI/CD, сканирование образов, backup/restore и сбор метрик предстоит спроектировать
-отдельно. Наличие Dockerfile не подтверждает успешную сборку, релиз или приёмку.
+Прежний DevOps-контур удалён по решению начать его заново. Запуск приложения
+не зависит от старых scripts или Linux test-образа; `make test` использует
+отдельные тестовые Docker-файлы. Автоматические CI/CD, сканирование образов,
+backup/restore и сбор метрик предстоит спроектировать отдельно. Наличие Dockerfile
+не подтверждает успешную сборку, релиз или приёмку.
 
 Правила изменений — [AGENTS.md](AGENTS.md).
 

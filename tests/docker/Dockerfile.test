@@ -1,0 +1,25 @@
+FROM ghcr.io/astral-sh/uv:0.9.5 AS uv
+
+FROM python:3.12.12-slim AS backend-test
+COPY --from=uv /uv /usr/local/bin/uv
+WORKDIR /workspace/backend
+ENV UV_COMPILE_BYTECODE=1 PATH="/workspace/backend/.venv/bin:$PATH"
+COPY backend/pyproject.toml backend/uv.lock ./
+COPY backend/app ./app
+RUN uv sync --locked --extra dev && useradd --create-home app
+COPY backend/alembic.ini ./alembic.ini
+COPY backend/alembic ./alembic
+COPY backend/tests ./tests
+USER app
+CMD ["python", "tests/main.py"]
+
+FROM node:24.21.0-bookworm-slim AS frontend-test
+WORKDIR /workspace/frontend
+RUN npm install --global pnpm@11.19.0
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore ./
+COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./
+COPY frontend/src ./src
+USER node
+CMD ["node", "--version"]

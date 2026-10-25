@@ -4,7 +4,7 @@ SHELL := /bin/sh
 PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ROOT_Q := '$(subst ','"'"',$(PROJECT_ROOT))'
 
-.PHONY: setup build up down migrate
+.PHONY: setup build up down migrate test
 
 setup:
 	@set -eu; \
@@ -92,3 +92,41 @@ migrate: setup
 	  echo 'Ошибка: применение миграций завершилось неуспешно. База данных оставлена работающей.' >&2; exit 1; \
 	fi; \
 	echo 'Миграции успешно применены до head.'
+
+test:
+	@set -eu; \
+	cd $(ROOT_Q); \
+	if ! command -v docker >/dev/null 2>&1; then echo 'Ошибка: Docker CLI не найден в PATH.' >&2; exit 1; fi; \
+	if ! docker compose version >/dev/null 2>&1; then echo 'Ошибка: требуется Docker Compose v2.' >&2; exit 1; fi; \
+	compose_version=$$(docker compose version --short 2>/dev/null | sed 's/^v//'); \
+	if [ -z "$$compose_version" ] || [ "$$(printf '%s\n' 2.22.0 "$$compose_version" | sort -V | head -n 1)" != 2.22.0 ]; then \
+	  echo 'Ошибка: требуется Docker Compose версии 2.22.0 или новее.' >&2; exit 1; \
+	fi; \
+	if ! docker info >/dev/null 2>&1; then echo 'Ошибка: Docker daemon недоступен.' >&2; exit 1; fi; \
+	for path in tests/docker/Dockerfile.test tests/docker/Dockerfile.test.dockerignore tests/docker/docker-compose.test.yml backend/pyproject.toml backend/uv.lock backend/alembic.ini backend/alembic backend/app backend/tests frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml frontend/src; do \
+	  [ -e "$$path" ] || { echo "Ошибка: отсутствует исходник тестовой сборки: $$path" >&2; exit 1; }; \
+	done; \
+	mkdir -p reports; \
+	run_id=$$(date -u +%Y%m%dt%H%M%Sz)-$$$$; \
+	case "$$run_id" in *[!a-zA-Z0-9_-]*) echo 'Ошибка: недопустимый идентификатор тестового запуска.' >&2; exit 1;; esac; \
+	project="inventory-test-$$run_id"; \
+	case "$$project" in inventory-test-[a-zA-Z0-9_-]*) ;; *) echo 'Ошибка: не удалось определить безопасный проект Compose.' >&2; exit 1;; esac; \
+	if [ "$$(id -u)" -eq 0 ]; then echo 'Ошибка: запускайте make test от непривилегированного пользователя для доступа к отчётам.' >&2; exit 1; fi; \
+	mkdir "reports/$$run_id" || { echo 'Ошибка: не удалось создать каталог отчётов.' >&2; exit 1; }; \
+	compose() { docker compose --env-file /dev/null -f tests/docker/docker-compose.test.yml -p "$$project" "$$@"; }; \
+	cleanup() { \
+	  result=$$?; trap - EXIT HUP INT TERM; \
+	  if ! compose down --volumes; then \
+	    echo "Ошибка очистки тестового проекта $$project; проверьте его ресурсы вручную." >&2; \
+	    if [ "$$result" -eq 0 ]; then result=1; fi; \
+	  fi; \
+	  exit "$$result"; \
+	}; \
+	trap cleanup EXIT; \
+	trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM; \
+	export TEST_HOST_REPORTS_DIR="$(PROJECT_ROOT)/reports/$$run_id"; \
+	export TEST_HOST_UID=$$(id -u); export TEST_HOST_GID=$$(id -g); \
+	compose build backend-test frontend-test; \
+	compose up -d --wait db; \
+	compose run --rm --no-deps backend-test alembic upgrade head; \
+	compose run --rm --no-deps backend-test python tests/main.py
