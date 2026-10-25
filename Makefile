@@ -55,7 +55,7 @@ setup:
 build: setup
 	@set -eu; cd $(ROOT_Q); docker compose build; docker compose pull db
 
-run: setup
+up: setup
 	@set -eu; cd $(ROOT_Q); \
 	if ! docker compose up -d --wait --no-build --pull never; then \
 	  echo 'Ошибка: запуск или проверка готовности не выполнены. Для диагностики: docker compose logs --tail=100 backend db frontend. Если образы отсутствуют, выполните make build.' >&2; exit 1; \
