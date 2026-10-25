@@ -77,7 +77,7 @@ down:
 
 migrate: setup
 	@set -eu; cd $(ROOT_Q); \
-	backend_image=$$(docker compose config --images backend 2>/dev/null) || { echo 'Ошибка: не удалось определить backend-образ из конфигурации Compose.' >&2; exit 1; }; \
+	backend_image=$$(docker compose config --images backend | grep 'backend' 2>/dev/null) || { echo 'Ошибка: не удалось определить backend-образ из конфигурации Compose.' >&2; exit 1; }; \
 	db_image=$$(docker compose config --images db 2>/dev/null) || { echo 'Ошибка: не удалось определить образ базы данных из конфигурации Compose.' >&2; exit 1; }; \
 	if [ -z "$$backend_image" ] || ! docker image inspect "$$backend_image" >/dev/null 2>&1; then \
 	  echo 'Ошибка: готовый backend-образ не найден. Выполните make build.' >&2; exit 1; \
