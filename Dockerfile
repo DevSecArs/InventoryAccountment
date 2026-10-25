@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 FROM python:3.11-slim-trixie AS builder
 
 ARG UV_VERSION=0.5.29
@@ -38,10 +37,11 @@ RUN test "$LOCAL_UID" -gt 0 && test "$LOCAL_GID" -gt 0 && \
     groupadd --gid "$LOCAL_GID" app && useradd --uid "$LOCAL_UID" --gid app --create-home app
 WORKDIR /app
 COPY --from=builder --chown=app:app /app /app
-RUN pip install --no-cache-dir --upgrade "setuptools>=80.0.0"
-RUN find /app /usr/local/lib/python3.11/site-packages -name "*.cdx.json" -delete 2>/dev/null || true
-
-RUN mkdir /app/reports /app/mutants /app/backups && chown app:app /app/reports /app/mutants /app/backups
+RUN pip install --no-cache-dir --upgrade "setuptools>=80.0.0" && \
+    find /app /usr/local/lib/python3.11/site-packages \
+      -name "*.cdx.json" -delete && \
+    mkdir -p /app/reports /app/mutants /app/backups && \
+    chown app:app /app/reports /app/mutants /app/backups
 USER app
 EXPOSE 8000
 STOPSIGNAL SIGTERM
@@ -62,7 +62,13 @@ USER node
 FROM frontend-base AS frontend
 
 COPY --chown=node:node frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=inventory-pnpm-${LOCAL_UID}-${LOCAL_GID},target=/app/.pnpm-store,uid=${LOCAL_UID},gid=${LOCAL_GID} \
+    --mount=type=cache,id=inventory-pnpm-metadata-${LOCAL_UID}-${LOCAL_GID},target=/home/node/.cache/pnpm,uid=${LOCAL_UID},gid=${LOCAL_GID} \
+    pnpm install \
+      --frozen-lockfile \
+      --store-dir /app/.pnpm-store \
+      --network-concurrency=4 \
+      --prefer-offline
 # Copy source paths explicitly: Windows pnpm links in node_modules may be unreadable.
 COPY --chown=node:node frontend/src ./src
 COPY --chown=node:node frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./

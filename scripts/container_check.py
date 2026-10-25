@@ -16,13 +16,13 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE_FILES = ("docker-compose.yaml", "compose.test.yaml", "compose.test-runner.yaml")
 EXPECTED_SERVICES = (
-    {"db", "app", "frontend", "migrate", "pg-tools"},
+    {"db", "app", "frontend", "nginx", "migrate", "pg-tools"},
     {"db", "app", "frontend", "pg-tools"},
     {"db", "tests"},
 )
-DAEMONS = {"db", "app", "frontend"}
+DAEMONS = {"db", "app", "frontend", "nginx"}
 JOBS = {"migrate", "pg-tools", "tests"}
-PORTS = {"app": 8000, "frontend": 5173}
+PORTS = {"app": 8000, "frontend": 5173, "nginx": 8080}
 SECRET_NAME = re.compile(
     r"password|passwd|secret|token|(?:private|api|access).?key|credentials|database.?url",
     re.IGNORECASE,

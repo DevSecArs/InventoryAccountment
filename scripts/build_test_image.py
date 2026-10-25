@@ -16,6 +16,7 @@ FILES = (
     "uv.lock",
     "README.md",
     "alembic.ini",
+    "vendor/pnpm-11.19.0.tgz",
 )
 DIRECTORIES = ("app", "alembic", "tests", "scripts", "frontend")
 EXCLUDED = {"node_modules", "__pycache__", ".venv", ".git", "dist"}

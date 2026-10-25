@@ -27,7 +27,7 @@ ifneq ($(filter DOCKER LOCAL TEST,$(.VARIABLES)),)
 $(error Флаги DOCKER/LOCAL/TEST удалены. Все команды работают в Docker; проверки изолированы автоматически)
 endif
 
-.PHONY: container-check prepare-container-dirs setup run up down status migrate backup restore test test-in-container quality verify test-clean check-test-environment check-test-project-clean frontend-test-image ensure-pnpm-store mutation migration-check backup-restore-check container-smoke lock-check secret-scan image-scan check-working-tree-diff check-branch-diff
+.PHONY: container-check prepare-container-dirs setup run up up-build down status migrate backup restore test test-in-container quality verify test-clean check-test-environment check-test-project-clean frontend-test-image ensure-pnpm-store mutation migration-check backup-restore-check container-smoke lock-check secret-scan image-scan check-working-tree-diff check-branch-diff
 
 setup: prepare-container-dirs
 	@docker info >/dev/null
@@ -38,6 +38,9 @@ setup: prepare-container-dirs
 run: up
 
 up:
+	@$(COMPOSE) up --no-build --detach --wait
+
+up-build:
 	@$(COMPOSE) up --build --detach --wait
 
 down:
