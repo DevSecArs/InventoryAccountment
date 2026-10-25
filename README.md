@@ -16,14 +16,28 @@ UI создаёт поступление с одной позицией; API п�
 
 ## Запуск
 
-Нужны Docker Engine или Docker Desktop с Linux containers и Docker Compose v2.
+Для Ubuntu Server нужны Docker Engine, Docker Compose v2 версии 2.20.0 или новее,
+GNU Make и POSIX shell. Настройте Docker daemon и доступ текущего пользователя.
+Создайте `.env` в корне проекта или запустите `make setup`: при отсутствии файла
+команда создаст его из `.env.example` с правами 0600. Существующий `.env` не
+перезаписывается. Setup проверяет Docker, daemon, исходные файлы и Compose;
+может точечно добавить владельцу право чтения исходного файла или чтения/прохода
+каталога, только если объект принадлежит текущему пользователю.
+
 Из корня репозитория:
 
 ```bash
-docker compose up -d --build --wait
+make setup
+make build
+make run
 ```
 
-Откройте http://localhost:5173 и зарегистрируйте первого администратора.
+`make build` собирает backend/frontend и загружает образ PostgreSQL.
+`make run` запускает готовые образы в фоне и ждёт healthcheck; сборку он не
+выполняет. После успешного запуска откройте http://localhost:5173.
+При диагностике используйте `docker compose logs --tail=100 backend db frontend`.
+
+Зарегистрируйте первого администратора после открытия интерфейса.
 Frontend работает через Vite dev server. Только он публикует порт 5173.
 `/api` и `/health` проксируются на `backend:8000` внутри Docker.
 Backend и PostgreSQL не публикуют порты на хост.
