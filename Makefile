@@ -94,6 +94,7 @@ migrate: setup
 	echo 'Миграции успешно применены до head.'
 
 test:
+	# Проверки docker
 	@set -eu; \
 	cd $(ROOT_Q); \
 	if ! command -v docker >/dev/null 2>&1; then echo 'Ошибка: Docker CLI не найден в PATH.' >&2; exit 1; fi; \
@@ -106,6 +107,7 @@ test:
 	for path in tests/docker/Dockerfile.test tests/docker/Dockerfile.test.dockerignore tests/docker/docker-compose.test.yml backend/pyproject.toml backend/uv.lock backend/alembic.ini backend/alembic backend/app backend/tests frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml frontend/src; do \
 	  [ -e "$$path" ] || { echo "Ошибка: отсутствует исходник тестовой сборки: $$path" >&2; exit 1; }; \
 	done; \
+	# Создание папки для отчётов
 	mkdir -p reports; \
 	run_id=$$(date -u +%Y%m%dt%H%M%Sz)-$$$$; \
 	case "$$run_id" in *[!a-zA-Z0-9_-]*) echo 'Ошибка: недопустимый идентификатор тестового запуска.' >&2; exit 1;; esac; \
@@ -125,10 +127,12 @@ test:
 	trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM; \
 	export TEST_HOST_REPORTS_DIR="$(PROJECT_ROOT)/reports/$$run_id"; \
 	export TEST_HOST_UID=$$(id -u); export TEST_HOST_GID=$$(id -g); \
+		# Прогон тестов
         compose build backend-test; \
         compose up -d --wait db; \
         compose run --rm --no-deps backend-test alembic upgrade head; \
         compose run --rm --no-deps backend-test python tests/main.py; \
+		echo '===============Начало мутационных тестов==============='; \
         compose run --rm --no-deps backend-test sh -c 'mutmut run --max-children 1 && mutmut results | tee /workspace/reports/mutations.txt && ! grep -Eq ": (survived|no tests)$$" /workspace/reports/mutations.txt'
 
 quality:
