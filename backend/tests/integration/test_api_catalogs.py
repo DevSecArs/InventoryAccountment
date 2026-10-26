@@ -7,11 +7,13 @@ from app import http
 from app.postgresql import get_session_factory
 
 
-def _assert_error(response: Response, status_code: int) -> None:
+def _assert_error(response: Response, status_code: int, message: str | None = None) -> None:
     assert response.status_code == status_code
     body = response.json()
     assert body["code"] == f"http_{status_code}"
     assert {"code", "message", "details", "request_id"} <= body.keys()
+    if message is not None:
+        assert body["message"] == message
 
 
 def test_health_and_error_format(client: TestClient) -> None:
@@ -25,6 +27,7 @@ def test_health_and_error_format(client: TestClient) -> None:
     unauthorized = client.get("/api/v1/units/")
     assert unauthorized.status_code == 401
     assert {"code", "message", "details", "request_id"} <= unauthorized.json().keys()
+    assert unauthorized.json()["message"] == "Требуется авторизация"
 
 
 def test_authentication_and_csrf_are_required(client: TestClient) -> None:
@@ -207,14 +210,18 @@ def test_expired_session_and_missing_csrf_have_uniform_errors(client: TestClient
     finally:
         session.close()
 
-    _assert_error(client.get("/api/v1/units/"), 401)
+    _assert_error(client.get("/api/v1/units/"), 401, "Сессия истекла")
     client.cookies.clear()
     login = client.post(
         "/api/v1/auth/login",
         json={"login": "admin", "password": "reliable-test-password"},
     )
     assert login.status_code == 200
-    _assert_error(client.post("/api/v1/units/", json={"code": "KG"}), 403)
+    _assert_error(
+        client.post("/api/v1/units/", json={"code": "KG"}),
+        403,
+        "Недействительный CSRF-токен",
+    )
 
 
 def test_non_admin_cannot_purge_archived_catalog(
@@ -230,7 +237,11 @@ def test_non_admin_cannot_purge_archived_catalog(
     finally:
         session.close()
 
-    _assert_error(client.delete(f"/api/v1/units/{unit['id']}/purge", headers=headers), 403)
+    _assert_error(
+        client.delete(f"/api/v1/units/{unit['id']}/purge", headers=headers),
+        403,
+        "Требуются права администратора",
+    )
 
 
 def test_catalog_pagination_and_search_parameter_boundaries(

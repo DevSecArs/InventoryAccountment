@@ -6,7 +6,8 @@ WORKDIR /workspace/backend
 ENV UV_COMPILE_BYTECODE=1 PATH="/workspace/backend/.venv/bin:$PATH"
 COPY backend/pyproject.toml backend/uv.lock ./
 COPY backend/app ./app
-RUN uv sync --locked --extra dev && useradd --create-home app
+RUN uv sync --locked --extra dev && useradd --create-home app \
+    && chown app:app /workspace/backend
 COPY backend/alembic.ini ./alembic.ini
 COPY backend/alembic ./alembic
 COPY backend/tests ./tests

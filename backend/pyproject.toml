@@ -80,4 +80,5 @@ disallow_untyped_defs = true
 [tool.mutmut]
 source_paths = ["app"]
 only_mutate = ["app/entities/auth.py"]
+pytest_add_cli_args = ["-o", "addopts=", "--no-cov"]
 pytest_add_cli_args_test_selection = ["tests"]

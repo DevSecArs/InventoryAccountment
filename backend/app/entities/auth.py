@@ -15,6 +15,8 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.postgresql import Base, DatabaseSession
 
+HASH_ALGORITHM = "sha256"
+TEXT_ENCODING = "utf-8"
 SESSION_COOKIE = "inventory_session"
 CSRF_HEADER = "X-CSRF-Token"
 SESSION_LIFETIME = timedelta(days=7)
@@ -115,17 +117,19 @@ class AuthResponse(BaseModel):
 
 def _hash_password(password: str, salt: bytes | None = None) -> str:
     actual_salt = salt or secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), actual_salt, 600_000)
+    digest = hashlib.pbkdf2_hmac(
+        HASH_ALGORITHM, password.encode(TEXT_ENCODING), actual_salt, 600_000
+    )
     return f"pbkdf2_sha256$600000${actual_salt.hex()}${digest.hex()}"
 
 
 def _verify_password(password: str, encoded: str) -> bool:
     try:
-        algorithm, iterations, salt_hex, digest_hex = encoded.split("$", 3)
+        algorithm, iterations, salt_hex, digest_hex = encoded.split("$")
         if algorithm != "pbkdf2_sha256":
             return False
         expected = hashlib.pbkdf2_hmac(
-            "sha256", password.encode("utf-8"), bytes.fromhex(salt_hex), int(iterations)
+            HASH_ALGORITHM, password.encode(TEXT_ENCODING), bytes.fromhex(salt_hex), int(iterations)
         )
         return hmac.compare_digest(expected.hex(), digest_hex)
     except (TypeError, ValueError):
@@ -133,7 +137,7 @@ def _verify_password(password: str, encoded: str) -> bool:
 
 
 def _token_hash(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+    return hashlib.sha256(token.encode(TEXT_ENCODING)).hexdigest()
 
 
 def create_user(db: Session, payload: RegisterRequest) -> User:
@@ -152,11 +156,11 @@ def create_user(db: Session, payload: RegisterRequest) -> User:
 
 
 def create_session(db: Session, user: User) -> tuple[str, UserSession]:
-    token = secrets.token_urlsafe(32)
+    token = secrets.token_urlsafe()
     session = UserSession(
         user_id=user.id,
         token_hash=_token_hash(token),
-        csrf_token=secrets.token_urlsafe(32),
+        csrf_token=secrets.token_urlsafe(),
         expires_at=datetime.now(UTC) + SESSION_LIFETIME,
     )
     db.add(session)
@@ -188,7 +192,8 @@ CurrentUser = Depends(get_current_user)
 
 def require_csrf(request: Request, user: User = CurrentUser) -> User:
     session = request.state.auth_session
-    if not hmac.compare_digest(request.headers.get(CSRF_HEADER, ""), session.csrf_token):
+    token = request.headers.get(CSRF_HEADER)
+    if token is None or not hmac.compare_digest(token, session.csrf_token):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Недействительный CSRF-токен"
         )
