@@ -25,3 +25,10 @@ def test_password_verification_accepts_only_matching_password(password_hash: str
 )
 def test_password_verification_rejects_invalid_hash_data(encoded: str) -> None:
     assert not _verify_password("correct-password", encoded)
+
+
+def test_password_hash_generates_16_byte_salt() -> None:
+    encoded = _hash_password("correct-password")
+    salt_hex = encoded.split("$")[2]
+
+    assert len(bytes.fromhex(salt_hex)) == 16

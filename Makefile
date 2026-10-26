@@ -4,7 +4,7 @@ SHELL := /bin/sh
 PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ROOT_Q := '$(subst ','"'"',$(PROJECT_ROOT))'
 
-.PHONY: setup build up down migrate test
+.PHONY: setup build up down migrate test quality
 
 setup:
 	@set -eu; \
@@ -125,7 +125,15 @@ test:
 	trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM; \
 	export TEST_HOST_REPORTS_DIR="$(PROJECT_ROOT)/reports/$$run_id"; \
 	export TEST_HOST_UID=$$(id -u); export TEST_HOST_GID=$$(id -g); \
-	compose build backend-test frontend-test; \
-	compose up -d --wait db; \
-	compose run --rm --no-deps backend-test alembic upgrade head; \
-	compose run --rm --no-deps backend-test python tests/main.py
+        compose build backend-test; \
+        compose up -d --wait db; \
+        compose run --rm --no-deps backend-test alembic upgrade head; \
+        compose run --rm --no-deps backend-test python tests/main.py; \
+        compose run --rm --no-deps backend-test sh -c 'mutmut run --max-children 1 && mutmut results | tee /workspace/reports/mutations.txt && ! grep -Eq ": (survived|no tests)$$" /workspace/reports/mutations.txt'
+
+quality:
+	@set -eu; \
+	cd $(ROOT_Q); \
+	docker build -q -f tests/docker/Dockerfile.test --target backend-test -t inventory-backend-test .; \
+	docker run --rm inventory-backend-test sh -c \
+	  'ruff check app tests && ruff format --check app tests && mypy app && bandit -r app'

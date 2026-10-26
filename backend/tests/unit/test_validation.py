@@ -6,7 +6,7 @@ import pytest
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
-from app.entities.auth import RegisterRequest
+from app.entities.auth import RegisterRequest, create_user
 from app.entities.material import MaterialCreate
 from app.entities.receipt import ReceiptCreate, ReceiptItemPayload, ReceiptUpdate, _items
 from app.entities.supplier import SupplierCreate
@@ -94,3 +94,31 @@ def test_receipt_quantity_zero_rejected() -> None:
         )
 
     assert any(error["type"] == "quantity_not_positive" for error in exc_info.value.errors())
+
+
+def test_create_user_normalizes_email() -> None:
+    db = MagicMock(spec=Session)
+    db.query.return_value.count.return_value = 0
+    payload = RegisterRequest(
+        login="admin",
+        password="reliable-test-password",
+        full_name="Администратор",
+        email="  admin@example.com  ",
+    )
+
+    user = create_user(db, payload)
+
+    assert user.email == "admin@example.com"
+
+
+def test_create_user_rejects_repeated_registration() -> None:
+    db = MagicMock(spec=Session)
+    db.query.return_value.count.return_value = 1
+    payload = RegisterRequest(
+        login="admin",
+        password="reliable-test-password",
+        full_name="Администратор",
+    )
+
+    with pytest.raises(ValueError, match="^Начальная регистрация уже завершена$"):
+        create_user(db, payload)

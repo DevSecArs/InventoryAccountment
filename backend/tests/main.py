@@ -10,7 +10,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-
 BACKEND = Path(__file__).resolve().parents[1]
 ROOT = BACKEND.parent
 
@@ -76,8 +75,11 @@ class TestOutput:
         phases = self.reports.pop(report.nodeid, {})
         self._print_test_output(report.nodeid)
         final = next(
-            (phases[phase] for phase in ("setup", "call", "teardown")
-             if phase in phases and phases[phase].failed),
+            (
+                phases[phase]
+                for phase in ("setup", "call", "teardown")
+                if phase in phases and phases[phase].failed
+            ),
             None,
         )
         if final:
@@ -157,10 +159,19 @@ def main() -> int:
 
     plugin = TestOutput()
     arguments = [
-        "-o", "addopts=", "-x", "-q", "--capture=sys", "--strict-markers", "--cov=app.entities",
-        "--cov-report=term-missing", f"--cov-report=xml:{reports / 'coverage.xml'}",
-        f"--cov-report=html:{reports / 'htmlcov'}", f"--junitxml={reports / 'junit.xml'}",
-        "--cov-fail-under=80", "tests",
+        "-o",
+        "addopts=",
+        "-x",
+        "-q",
+        "--capture=sys",
+        "--strict-markers",
+        "--cov=app.entities",
+        "--cov-report=term-missing",
+        f"--cov-report=xml:{reports / 'coverage.xml'}",
+        f"--cov-report=html:{reports / 'htmlcov'}",
+        f"--junitxml={reports / 'junit.xml'}",
+        "--cov-fail-under=80",
+        "tests",
     ]
     result = pytest.main(arguments, plugins=[plugin])
     return int(result)
