@@ -132,12 +132,16 @@ test:
         compose up -d --wait db; \
         compose run --rm --no-deps backend-test alembic upgrade head; \
         compose run --rm --no-deps backend-test python tests/main.py; \
-		echo '===============Начало мутационных тестов==============='; \
+		echo '=============== Начало мутационных тестов ==============='; \
         compose run --rm --no-deps backend-test sh -c 'mutmut run --max-children 1 && mutmut results | tee /workspace/reports/mutations.txt && ! grep -Eq ": (survived|no tests)$$" /workspace/reports/mutations.txt'
 
 quality:
 	@set -eu; \
 	cd $(ROOT_Q); \
 	docker build -q -f tests/docker/Dockerfile.test --target backend-test -t inventory-backend-test .; \
-	docker run --rm inventory-backend-test sh -c \
-	  'ruff check app tests && ruff format --check app tests && mypy app && bandit -r app'
+	docker run --rm inventory-backend-test sh -c ' \
+		echo "=============== Запуск линтера ===============" && \
+		ruff check app tests && ruff format --check app tests && mypy app && \
+		echo "=============== Линтеры пройдены. Запуск SAST Bandit ===============" && \
+		bandit -r app \
+		'
