@@ -134,12 +134,12 @@ test:
 	export TEST_HOST_REPORTS_DIR="$(PROJECT_ROOT)/reports/$$run_id"; \
 	export TEST_HOST_UID=$$(id -u); export TEST_HOST_GID=$$(id -g); \
 		# Прогон тестов
-        compose build backend-test; \
-        compose up -d --wait db; \
-        compose run --rm --no-deps backend-test alembic upgrade head; \
-        compose run --rm --no-deps backend-test python tests/main.py; \
+		compose build backend-test; \
+		compose up -d --wait db; \
+		compose run --rm --no-deps backend-test alembic upgrade head; \
+		compose run --rm --no-deps backend-test python tests/main.py; \
 		echo '=============== Начало мутационных тестов ==============='; \
-        compose run --rm --no-deps backend-test sh -c 'mutmut run --max-children 1 && mutmut results | tee /workspace/reports/mutations.txt && ! grep -Eq ": (survived|no tests)$$" /workspace/reports/mutations.txt'
+		compose run --rm --no-deps backend-test sh -c 'mutmut run --max-children 1 && mutmut results | tee /workspace/reports/mutations.txt && ! grep -Eq ": (survived|no tests)$$" /workspace/reports/mutations.txt'
 
 quality:
 	@set -eu; \
