@@ -4,7 +4,7 @@ SHELL := /bin/sh
 PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ROOT_Q := '$(subst ','"'"',$(PROJECT_ROOT))'
 
-.PHONY: setup build up down migrate test quality
+.PHONY: setup build up down migrate status test quality verify
 
 setup:
 	@set -eu; \
@@ -74,6 +74,12 @@ down:
 	  echo 'Ошибка: не удалось остановить проект Docker Compose.' >&2; exit 1; \
 	fi; \
 	echo 'Контейнеры и сеть проекта остановлены; тома сохранены.'
+
+status:
+	@set -eu; cd $(ROOT_Q); \
+	if ! command -v docker >/dev/null 2>&1; then echo 'Ошибка: Docker CLI не найден в PATH.' >&2; exit 1; fi; \
+	if ! docker compose version >/dev/null 2>&1; then echo 'Ошибка: требуется плагин Docker Compose v2.' >&2; exit 1; fi; \
+	docker compose ps
 
 migrate: setup
 	@set -eu; cd $(ROOT_Q); \
@@ -145,3 +151,24 @@ quality:
 		echo "=============== Линтеры пройдены. Запуск SAST Bandit ===============" && \
 		bandit -r app \
 		'
+
+verify:
+	@set +e; \
+	echo '========== test =========='; \
+	$(MAKE) -f '$(abspath $(firstword $(MAKEFILE_LIST)))' test; test_result=$$?; \
+	if [ "$$test_result" -ne 0 ]; then \
+	  echo 'Результат verify:'; \
+	  echo '  test: ОШИБКА'; \
+	  echo '  quality: НЕ ЗАПУЩЕНО — ошибка test'; \
+	  echo '  итог: ОШИБКА'; \
+	  exit 1; \
+	fi; \
+	echo '========== quality =========='; \
+	$(MAKE) -f '$(abspath $(firstword $(MAKEFILE_LIST)))' quality; quality_result=$$?; \
+	echo 'Результат verify:'; \
+	echo '  test: УСПЕШНО'; \
+	if [ "$$quality_result" -eq 0 ]; then \
+	  echo '  quality: УСПЕШНО'; echo '  итог: УСПЕШНО'; \
+	else \
+	  echo '  quality: ОШИБКА'; echo '  итог: ОШИБКА'; exit 1; \
+	fi

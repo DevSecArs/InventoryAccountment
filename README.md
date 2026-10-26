@@ -32,6 +32,9 @@ make build
 make migrate
 make up
 make test
+make quality
+make verify
+make status
 ```
 
 `make test` собирает отдельные образы backend и frontend, запускает только
@@ -40,6 +43,12 @@ make test
 только собирается. Конфигурации находятся в `tests/docker/`. После завершения удаляются тестовые контейнеры, сеть и том.
 Отчёты отдельного запуска сохраняются в `reports/<идентификатор-запуска>/`.
 После SIGKILL или аварии хоста очистка не гарантируется.
+
+`make quality` собирает тестовый backend-образ и выполняет Ruff, проверку
+форматирования, mypy и Bandit. `make verify` последовательно запускает
+`make test`, а после его успеха — `make quality`; при первой ошибке останавливается
+и показывает итоговый статус обеих целей. `make status` показывает штатный вывод
+`docker compose ps` из корня проекта без запуска setup; пустое окружение допустимо.
 
 `make build` собирает backend/frontend и загружает образ PostgreSQL.
 `make migrate` запускает только БД, ждёт её healthcheck и применяет миграции
