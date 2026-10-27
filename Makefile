@@ -4,7 +4,8 @@ SHELL := /bin/sh
 PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ROOT_Q := '$(subst ','"'"',$(PROJECT_ROOT))'
 
-.PHONY: setup build up down migrate status test quality verify backup restore
+
+.PHONY: setup build up down migrate status test quality verify backup restore container-check
 
 setup:
 	@set -eu; \
@@ -195,3 +196,6 @@ verify:
 	else \
 	  echo '  quality: ОШИБКА'; echo '  итог: ОШИБКА'; exit 1; \
 	fi
+
+container-check:
+	@python3 scripts/container_check.py
