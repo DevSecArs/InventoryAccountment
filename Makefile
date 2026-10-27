@@ -4,7 +4,8 @@ SHELL := /bin/sh
 PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ROOT_Q := '$(subst ','"'"',$(PROJECT_ROOT))'
 
-.PHONY: setup build up down migrate status test quality verify container-check
+
+.PHONY: setup build up down migrate status test quality verify backup restore container-check
 
 setup:
 	@set -eu; \
@@ -99,6 +100,29 @@ migrate: setup
 	fi; \
 	echo 'Миграции успешно применены до head.'
 
+backup: setup
+	@set -eu; cd $(ROOT_Q); \
+	mkdir -p backups; chmod 700 backups; \
+	umask 077; \
+	file="backups/inventory-$$(date -u +%Y%m%dT%H%M%SZ)-$$$$.dump"; \
+	tmp="$$file.tmp"; \
+	trap 'rm -f "$$tmp"' 0; \
+	trap 'exit 130' INT; trap 'exit 143' TERM; \
+	docker compose exec -T db sh -c 'exec pg_dump -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -Fc' > "$$tmp"; \
+	mv "$$tmp" "$$file"; \
+	trap - 0; \
+	echo "Резервная копия создана: $$file"
+
+restore: setup
+	@set -eu; cd $(ROOT_Q); \
+	if [ -z "$(FILE)" ] || [ ! -f "$(FILE)" ] || [ -L "$(FILE)" ]; then \
+	  echo 'Ошибка: укажите существующий файл: make restore FILE=backups/имя.dump' >&2; exit 1; \
+	fi; \
+	printf 'ВНИМАНИЕ: данные текущей БД будут перезаписаны. Введите RESTORE: '; \
+	read -r answer; \
+	if [ "$$answer" != RESTORE ]; then echo 'Восстановление отменено.'; exit 1; fi; \
+	docker compose exec -T db sh -c 'exec pg_restore --exit-on-error --single-transaction --clean --if-exists --no-owner --no-privileges -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' < "$(FILE)"; \
+	echo 'Восстановление завершено.'
 test:
 	# Проверки docker
 	@set -eu; \
