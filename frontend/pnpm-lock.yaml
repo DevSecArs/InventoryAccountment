@@ -630,6 +630,15 @@ packages:
       vite:
         optional: true
 
+  '@vitest/coverage-v8@5.0.0':
+    resolution: {integrity: sha512-REQUIRES_REGISTRY_RESOLUTION}
+    peerDependencies:
+      '@vitest/browser': 5.0.0
+      vitest: 5.0.0
+    peerDependenciesMeta:
+      '@vitest/browser':
+        optional: true
+
   '@vitest/spy@5.0.0':
     resolution: {integrity: sha512-uy+luWBAPw9XfthoHi5AkfHUnuPYEESjl0p/r+meoBnU8bxg5GDQ3Ey8MjcJ6sqahkL4PFyrvfMJJBw7LbU06g==}
 
@@ -1417,14 +1426,6 @@ packages:
       happy-dom: '*'
       jsdom: '*'
       vite: ^6.4.0 || ^7.0.0 || ^8.0.0
-  '@vitest/coverage-v8@5.0.0':
-    resolution: {integrity: sha512-REQUIRES_REGISTRY_RESOLUTION}
-    peerDependencies:
-      '@vitest/browser': 5.0.0
-      vitest: 5.0.0
-    peerDependenciesMeta:
-      '@vitest/browser':
-        optional: true
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
