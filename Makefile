@@ -61,7 +61,7 @@ up: setup
 	if ! docker compose up -d --wait --no-build --pull never --scale backend=2; then \
 	  echo 'Ошибка: запуск или проверка готовности не выполнены. Для диагностики: docker compose logs --tail=100 backend db frontend nginx. Если образы отсутствуют, выполните make build.' >&2; exit 1; \
 	fi; \
-	echo 'Приложение готово: http://localhost'
+	echo 'Приложение готово к использованию.'
 
 down:
 	@set -eu; cd $(ROOT_Q); \
