@@ -1417,6 +1417,14 @@ packages:
       happy-dom: '*'
       jsdom: '*'
       vite: ^6.4.0 || ^7.0.0 || ^8.0.0
+  '@vitest/coverage-v8@5.0.0':
+    resolution: {integrity: sha512-REQUIRES_REGISTRY_RESOLUTION}
+    peerDependencies:
+      '@vitest/browser': 5.0.0
+      vitest: 5.0.0
+    peerDependenciesMeta:
+      '@vitest/browser':
+        optional: true
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
@@ -2628,6 +2636,22 @@ snapshots:
       jsdom: 30.0.1
     transitivePeerDependencies:
       - msw
+
+  '@vitest/coverage-v8@5.0.0(vitest@5.0.0(jsdom@30.0.1)(vite@8.3.0))':
+    dependencies:
+      '@ampproject/remapping': 2.3.0
+      '@bcoe/v8-coverage': 1.0.2
+      '@vitest/utils': 5.0.0
+      debug: 4.4.3
+      istanbul-lib-coverage: 3.2.2
+      istanbul-lib-report: 3.0.1
+      istanbul-reports: 3.2.0
+      magic-string: 0.30.21
+      std-env: 4.2.0
+      tinyrainbow: 3.1.0
+      vitest: 5.0.0(jsdom@30.0.1)(vite@8.3.0)
+    transitivePeerDependencies:
+      - supports-color
 
   w3c-xmlserializer@5.0.0:
     dependencies:
