@@ -1,0 +1,226 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+      - 'feature/**'
+      - 'codex/**'
+  pull_request:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  container-check:
+    name: Container security check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check container configuration
+        run: make container-check
+
+  tests:
+    name: Backend tests and mutation testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run tests
+        run: make test
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+  style:
+    name: Code style and typing
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Ruff and mypy
+        run: |
+          mkdir -p reports/style
+          docker build -q -f tests/docker/Dockerfile.test --target backend-test -t inventory-ci-quality .
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/reports/style:/reports" inventory-ci-quality sh -c '
+            ruff check app tests > /reports/ruff.txt 2>&1; lint_status=$?
+            ruff format --check app tests > /reports/format.txt 2>&1; format_status=$?
+            mypy app > /reports/mypy.txt 2>&1; mypy_status=$?
+            [ "$lint_status" -eq 0 ] && [ "$format_status" -eq 0 ] && [ "$mypy_status" -eq 0 ]
+          '
+
+      - name: Upload style reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: style-reports
+          path: reports/style/
+          if-no-files-found: warn
+          retention-days: 14
+
+  security:
+    name: Static security analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Bandit and pip-audit
+        run: |
+          mkdir -p reports/security
+          docker build -q -f tests/docker/Dockerfile.test --target backend-test -t inventory-ci-security .
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/reports/security:/reports" inventory-ci-security sh -c '
+            bandit -r app -f json -o /reports/bandit.json; bandit_status=$?
+            uv export --locked --all-extras --no-emit-project -o /tmp/requirements.txt || exit 1
+            pip-audit -r /tmp/requirements.txt --disable-pip --no-deps -f json -o /reports/pip-audit.json
+            audit_status=$?
+            [ "$bandit_status" -eq 0 ] && [ "$audit_status" -eq 0 ]
+          '
+
+      - name: Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: reports/security/
+          if-no-files-found: warn
+          retention-days: 14
+
+  migrations:
+    name: Database migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run migrations on isolated PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TEST_HOST_REPORTS_DIR="$PWD/reports/migrations"
+          export TEST_HOST_UID="$(id -u)"
+          export TEST_HOST_GID="$(id -g)"
+          mkdir -p "$TEST_HOST_REPORTS_DIR"
+
+          compose() {
+            docker compose --env-file /dev/null \
+              -f tests/docker/docker-compose.test.yml \
+              -p "inventory-ci-migrations-${GITHUB_RUN_ID}" "$@"
+          }
+
+          trap 'compose down --volumes' EXIT
+
+          compose build backend-test
+          compose up -d --wait db
+          compose run --rm --no-deps backend-test alembic upgrade head
+
+  backup-restore:
+    name: PostgreSQL backup and restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test backup and restore on isolated database
+        shell: bash
+        run: |
+          set -euo pipefail
+          export COMPOSE_FILE=tests/docker/docker-compose.test.yml
+          export COMPOSE_PROJECT_NAME="inventory-ci-backup-${GITHUB_RUN_ID}"
+          export TEST_HOST_REPORTS_DIR="$PWD/reports/backup"
+          export TEST_HOST_UID="$(id -u)"
+          export TEST_HOST_GID="$(id -g)"
+          mkdir -p "$TEST_HOST_REPORTS_DIR"
+
+          trap 'docker compose down --volumes' EXIT
+
+          docker compose up -d --wait db
+
+          docker compose exec -T db sh -c \
+            'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 \
+            -c "CREATE TABLE ci_restore_check (id integer PRIMARY KEY); INSERT INTO ci_restore_check VALUES (42);"'
+
+          make backup
+
+          backup_file="$(find backups -maxdepth 1 -name '*.dump' -type f -print -quit)"
+          test -n "$backup_file"
+
+          docker compose exec -T db sh -c \
+            'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 \
+            -c "DROP TABLE ci_restore_check;"'
+
+          printf 'RESTORE\n' | make restore FILE="$backup_file"
+
+          result="$(docker compose exec -T db sh -c \
+            'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At \
+            -c "SELECT id FROM ci_restore_check;"')"
+
+          test "$result" = "42"
+          echo "Backup и restore: OK"
+
+  build:
+    name: Build Docker images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build backend and frontend
+        run: make build
+
+  publish:
+    name: Publish Docker images to GHCR
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    needs:
+      - container-check
+      - tests
+      - style
+      - security
+      - migrations
+      - backup-restore
+      - build
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish backend
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/backend"
+          docker build --target backend -t "$IMAGE:${GITHUB_SHA}" .
+          docker push "$IMAGE:${GITHUB_SHA}"
+
+      - name: Build and publish frontend
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/frontend"
+          docker build --target frontend -t "$IMAGE:${GITHUB_SHA}" .
+          docker push "$IMAGE:${GITHUB_SHA}"
