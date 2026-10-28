@@ -23,5 +23,16 @@ RUN pnpm install --frozen-lockfile
 COPY frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore ./
 COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./
 COPY frontend/src ./src
+RUN mkdir -p /workspace/reports && chown -R node:node /workspace
 USER node
-CMD ["node", "--version"]
+ENV HOME=/tmp
+CMD ["pnpm", "test:coverage"]
+
+FROM semgrep/semgrep:1.99.0 AS frontend-sast
+WORKDIR /workspace
+COPY frontend/src ./src
+COPY tests/docker/semgrep-rules.yml ./semgrep-rules.yml
+COPY tests/docker/semgrep-fixtures ./semgrep-fixtures
+USER semgrep
+ENV SEMGREP_SEND_METRICS=off SEMGREP_USER_AGENT_APPEND=offline
+CMD ["semgrep", "--metrics=off", "--disable-version-check", "--config", "semgrep-rules.yml", "--json", "--output", "/workspace/reports/sast.json", "src"]

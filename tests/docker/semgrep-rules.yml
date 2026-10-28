@@ -1,0 +1,18 @@
+# Правила основаны на локальных правилах Semgrep Community Edition, редакция 1.99.0.
+# Источник и лицензия: https://github.com/semgrep/semgrep-rules, LGPL-2.1.
+rules:
+  - id: local.javascript.security.audit.dangerous-html
+    languages: [javascript, typescript]
+    message: Опасная вставка HTML может привести к XSS.
+    severity: ERROR
+    pattern: $EL.innerHTML = $VALUE
+  - id: local.javascript.security.audit.dynamic-code
+    languages: [javascript, typescript]
+    message: Динамическое выполнение кода небезопасно.
+    severity: ERROR
+    pattern: eval($VALUE)
+  - id: local.javascript.security.audit.document-write
+    languages: [javascript, typescript]
+    message: document.write может привести к XSS.
+    severity: WARNING
+    pattern: document.write(...)

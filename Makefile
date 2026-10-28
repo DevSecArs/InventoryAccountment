@@ -158,23 +158,34 @@ test:
 	export TEST_HOST_REPORTS_DIR="$(PROJECT_ROOT)/reports/$$run_id"; \
 	export TEST_HOST_UID=$$(id -u); export TEST_HOST_GID=$$(id -g); \
 	: 'Прогон тестов'; \
-		compose build backend-test; \
+		compose build backend-test frontend-test; \
+		mkdir -p "reports/$$run_id/backend" "reports/$$run_id/frontend"; \
 		compose up -d --wait db; \
 		compose run --rm --no-deps backend-test alembic upgrade head; \
 		compose run --rm --no-deps backend-test python tests/main.py; \
 		echo '=============== Начало мутационных тестов ==============='; \
-		compose run --rm --no-deps backend-test sh -c 'mutmut run --max-children 1 && mutmut results | tee /workspace/reports/mutations.txt && ! grep -Eq ": (survived|no tests)$$" /workspace/reports/mutations.txt'
+		compose run --rm --no-deps backend-test sh -c 'mutmut run --max-children 1 && mutmut results | tee /workspace/reports/backend/mutations.txt && ! grep -Eq ": (survived|no tests)$$" /workspace/reports/backend/mutations.txt'; \
+		: 'Frontend: все тесты и покрытие'; \
+		mkdir -p "reports/$$run_id/frontend"; \
+		export REPORT_DIR=/workspace/reports/frontend; \
+		compose run --rm --no-deps frontend-test
 
 quality:
 	@set -eu; \
 	cd $(ROOT_Q); \
-	docker build -q -f tests/docker/Dockerfile.test --target backend-test -t inventory-backend-test .; \
-	docker run --rm inventory-backend-test sh -c ' \
-		echo "=============== Запуск линтера ===============" && \
-		ruff check app tests && ruff format --check app tests && mypy app && \
-		echo "=============== Линтеры пройдены. Запуск SAST Bandit ===============" && \
-		bandit -r app \
-		'
+	mkdir -p reports; run_id=$$(date -u +%Y%m%dt%H%M%Sz)-$$$$; mkdir "reports/$$run_id"; \
+	project="inventory-quality-$$run_id"; \
+	compose() { docker compose --env-file /dev/null -f tests/docker/docker-compose.test.yml -p "$$project" "$$@"; }; \
+	result=0; cleanup() { status=$$?; trap - EXIT HUP INT TERM; if ! compose down --volumes; then echo 'Ошибка очистки тестового проекта.' >&2; [ "$$status" -ne 0 ] || status=1; fi; exit "$$status"; }; \
+	trap cleanup EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; \
+	export TEST_HOST_REPORTS_DIR="$(PROJECT_ROOT)/reports/$$run_id" TEST_HOST_UID=$$(id -u) TEST_HOST_GID=$$(id -g); \
+	compose build backend-test frontend-test frontend-sast; \
+	echo '=============== Backend: Ruff, форматирование, mypy, Bandit ===============' && compose run --rm --no-deps backend-test sh -c 'ruff check app tests && ruff format --check app tests && mypy app && bandit -r app'; \
+	echo '=============== Frontend: Prettier ===============' && compose run --rm --no-deps frontend-test pnpm format:check; \
+	echo '=============== Frontend: ESLint ===============' && compose run --rm --no-deps frontend-test pnpm lint; \
+	echo '=============== Frontend: TypeScript ===============' && compose run --rm --no-deps frontend-test pnpm typecheck; \
+	echo '=============== Frontend: Semgrep ===============' && compose run --rm --no-deps frontend-sast sh -c 'semgrep --metrics=off --disable-version-check --config semgrep-rules.yml --json --output /workspace/reports/sast.json src; semgrep --metrics=off --disable-version-check --config semgrep-rules.yml src'; \
+	echo "Отчёты quality: reports/$$run_id/"
 
 verify:
 	@set +e; \
@@ -187,6 +198,7 @@ verify:
 	  echo '  итог: ОШИБКА'; \
 	  exit 1; \
 	fi; \
+	echo 'test отчёты: последний каталог reports/'; \
 	echo '========== quality =========='; \
 	$(MAKE) -f '$(abspath $(firstword $(MAKEFILE_LIST)))' quality; quality_result=$$?; \
 	echo 'Результат verify:'; \

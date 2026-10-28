@@ -23,6 +23,9 @@
 !frontend/tsconfig.node.json
 !frontend/src/
 !frontend/src/**
+!tests/docker/semgrep-rules.yml
+!tests/docker/semgrep-fixtures/
+!tests/docker/semgrep-fixtures/**
 
 **/__pycache__
 **/*.py[cod]
