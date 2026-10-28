@@ -56,11 +56,14 @@ make status
 и не скачивает образы; при их отсутствии выполните `make build`. После изменения
 файлов миграций пересоберите образы перед запуском `make migrate`.
 `make up` запускает готовые образы в фоне, две реплики backend и ждёт healthcheck;
-сборку и миграции он не выполняет. После успешного запуска откройте http://localhost.
+сборку и миграции он не выполняет. После успешного запуска откройте http://localhost:8080.
 При диагностике используйте `docker compose logs --tail=100 backend db frontend nginx`.
 
 Зарегистрируйте первого администратора после открытия интерфейса.
-Nginx — единственная внешняя HTTP-точка входа и публикует порт 80. Он направляет
+Nginx работает с UID:GID 101:101 из `nginxinc/nginx-unprivileged:alpine` и является
+единственной внешней HTTP-точкой входа: порт 8080 хоста направлен на 8080 контейнера.
+Образ использует `/tmp` для PID и временных файлов; тег `alpine` плавающий.
+Nginx направляет
 `/api` и `/health` напрямую к двум backend, остальные запросы и WebSocket HMR —
 к единственному Vite dev server. Vite proxy для API/health внутри сети направлен
 через Nginx. Frontend, backend и PostgreSQL не публикуют порты на хост.
@@ -83,15 +86,19 @@ Compose автоматически читает необязательный `.e
 
 ```bash
 docker compose ps
-docker compose logs --tail=100 backend db frontend
-curl http://localhost/health/ready
+docker compose logs --tail=100 nginx backend db frontend
+curl http://localhost:8080/health/ready
 docker compose exec nginx nginx -t
-docker compose ps
-docker compose logs --tail=100 nginx backend
-curl -sSI http://localhost/health/live
+curl -sSI http://localhost:8080/health/live
 make migrate
 docker compose down
 ```
+
+`make container-check` проверяет нормализованный Compose JSON и статические
+ограничения Dockerfile, `.dockerignore`, портов, пользователей, лимитов ресурсов,
+healthcheck и монтирования конфигурации. Команда требует Docker CLI и Compose,
+но не запускает контейнеры. Это ограниченный статический аудит: он не доказывает
+содержимое образов, фактические UID процессов, работоспособность и отказоустойчивость.
 
 Ответы backend содержат `X-Instance-ID` (hostname контейнера). Nginx обновляет
 DNS backend каждые 5 секунд, пассивно исключает неисправный узел на 5 секунд и

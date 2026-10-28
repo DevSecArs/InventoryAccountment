@@ -22,21 +22,21 @@ class SimpleDockerTests(unittest.TestCase):
         cls.services = json.loads(result.stdout)["services"]
         cls.nginx_config = (Path(__file__).resolve().parents[2] / "nginx" / "default.conf").read_text()
 
-    def test_only_nginx_publishes_port_80(self) -> None:
+    def test_only_nginx_publishes_port_8080(self) -> None:
         for name, service in self.services.items():
             if name != "nginx":
                 self.assertFalse(service.get("ports"), name)
         ports = self.services["nginx"]["ports"]
         self.assertEqual(len(ports), 1)
-        self.assertEqual(ports[0]["published"], "80")
-        self.assertEqual(ports[0]["target"], 80)
+        self.assertEqual(ports[0]["published"], "8080")
+        self.assertEqual(ports[0]["target"], 8080)
 
     def test_backend_replicas_and_nginx_routing(self) -> None:
         self.assertEqual(self.services["backend"]["deploy"]["replicas"], 2)
         self.assertNotIn("container_name", self.services["backend"])
         self.assertEqual(
             self.services["frontend"]["environment"]["VITE_API_PROXY_TARGET"],
-            "http://nginx",
+            "http://nginx:8080",
         )
         nginx = self.services["nginx"]
         config_mount = next(
