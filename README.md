@@ -55,14 +55,15 @@ make status
 до head в одноразовом контейнере из готового backend-образа. Команда не собирает
 и не скачивает образы; при их отсутствии выполните `make build`. После изменения
 файлов миграций пересоберите образы перед запуском `make migrate`.
-`make up` запускает готовые образы в фоне и ждёт healthcheck; сборку и миграции
-он не выполняет. После успешного запуска откройте http://localhost:5173.
-При диагностике используйте `docker compose logs --tail=100 backend db frontend`.
+`make up` запускает готовые образы в фоне, две реплики backend и ждёт healthcheck;
+сборку и миграции он не выполняет. После успешного запуска откройте http://localhost.
+При диагностике используйте `docker compose logs --tail=100 backend db frontend nginx`.
 
 Зарегистрируйте первого администратора после открытия интерфейса.
-Frontend работает через Vite dev server. Только он публикует порт 5173.
-`/api` и `/health` проксируются на `backend:8000` внутри Docker.
-Backend и PostgreSQL не публикуют порты на хост.
+Nginx — единственная внешняя HTTP-точка входа и публикует порт 80. Он направляет
+`/api` и `/health` напрямую к двум backend, остальные запросы и WebSocket HMR —
+к единственному Vite dev server. Vite proxy для API/health внутри сети направлен
+через Nginx. Frontend, backend и PostgreSQL не публикуют порты на хост.
 
 Dockerfile содержит цели backend и frontend. Backend запускает Uvicorn напрямую;
 миграции применяются явно командой `make migrate`. Прямой `docker compose up`
@@ -83,11 +84,22 @@ Compose автоматически читает необязательный `.e
 ```bash
 docker compose ps
 docker compose logs --tail=100 backend db frontend
-curl http://localhost:5173/health/ready
-docker compose exec backend alembic current
+curl http://localhost/health/ready
+docker compose exec nginx nginx -t
+docker compose ps
+docker compose logs --tail=100 nginx backend
+curl -sSI http://localhost/health/live
 make migrate
 docker compose down
 ```
+
+Ответы backend содержат `X-Instance-ID` (hostname контейнера). Nginx обновляет
+DNS backend каждые 5 секунд, пассивно исключает неисправный узел на 5 секунд и
+повторяет только GET/HEAD один раз. Таймаут подключения 3 секунды ограничивает
+установление соединения; read timeout 30 секунд ограничивает паузу между чтениями
+от backend, но не полное время ответа. Отказоустойчивость покрывает отказ одной
+backend-реплики на одном хосте; Nginx, Vite, PostgreSQL и хост остаются единичными
+точками отказа.
 
 Данные находятся в именованном томе inventory_data проекта inventory-compose.
 `make down` и `docker compose down` сохраняют том. Существующий том того же

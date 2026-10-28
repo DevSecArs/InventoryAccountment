@@ -41,8 +41,8 @@ setup:
 	    fi; \
 	  fi; \
 	}; \
-	for path in Dockerfile .dockerignore docker-compose.yml .env.example backend backend/pyproject.toml backend/uv.lock backend/app backend/alembic.ini backend/alembic frontend frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml frontend/index.html frontend/vite.config.ts frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json frontend/src; do \
-	  case "$$path" in backend|backend/app|backend/alembic|frontend|frontend/src) check_path "$(PROJECT_ROOT)/$$path" dir;; *) check_path "$(PROJECT_ROOT)/$$path" file;; esac; \
+	for path in Dockerfile .dockerignore docker-compose.yml .env.example nginx nginx/default.conf backend backend/pyproject.toml backend/uv.lock backend/app backend/alembic.ini backend/alembic frontend frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml frontend/index.html frontend/vite.config.ts frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json frontend/src; do \
+	  case "$$path" in backend|backend/app|backend/alembic|frontend|frontend/src|nginx) check_path "$(PROJECT_ROOT)/$$path" dir;; *) check_path "$(PROJECT_ROOT)/$$path" file;; esac; \
 	done; \
 	find backend/app backend/alembic frontend/src -type d \( -name node_modules -o -name .pnpm-store -o -name .venv -o -name venv -o -name reports -o -name backups \) -prune -o -type f -print | while IFS= read -r path; do \
 	  [ -L "$$path" ] && { echo "Ошибка: символическая ссылка в исходном дереве: $$path" >&2; exit 1; }; \
@@ -54,14 +54,14 @@ setup:
 	echo 'Проверка окружения завершена.'
 
 build: setup
-	@set -eu; cd $(ROOT_Q); docker compose build; docker compose pull db
+	@set -eu; cd $(ROOT_Q); docker compose build backend frontend; docker compose pull db nginx
 
 up: setup
 	@set -eu; cd $(ROOT_Q); \
-	if ! docker compose up -d --wait --no-build --pull never; then \
-	  echo 'Ошибка: запуск или проверка готовности не выполнены. Для диагностики: docker compose logs --tail=100 backend db frontend. Если образы отсутствуют, выполните make build.' >&2; exit 1; \
+	if ! docker compose up -d --wait --no-build --pull never --scale backend=2; then \
+	  echo 'Ошибка: запуск или проверка готовности не выполнены. Для диагностики: docker compose logs --tail=100 backend db frontend nginx. Если образы отсутствуют, выполните make build.' >&2; exit 1; \
 	fi; \
-	echo 'Приложение готово: http://localhost:5173'
+	echo 'Приложение готово: http://localhost'
 
 down:
 	@set -eu; cd $(ROOT_Q); \

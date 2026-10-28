@@ -26,6 +26,8 @@ services:
     build:
       context: .
       target: backend
+    deploy:
+      replicas: 2
     environment:
       POSTGRES_HOST: db
       POSTGRES_USER: ${POSTGRES_USER:-inventory_app}
@@ -50,16 +52,31 @@ services:
       context: .
       target: frontend
     environment:
-      VITE_API_PROXY_TARGET: http://backend:8000
-    ports:
-      - "5173:5173"
+      VITE_API_PROXY_TARGET: http://nginx
     healthcheck:
       test: [CMD, node, -e, "fetch('http://localhost:5173').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 5s
       timeout: 5s
       retries: 12
+  nginx:
+    image: nginx:1.27.4-alpine
+    cpus: 0.25
+    mem_limit: 128m
+    pids_limit: 100
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/health/live]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     depends_on:
       backend:
+        condition: service_healthy
+      frontend:
         condition: service_healthy
 
 volumes:

@@ -23,11 +23,13 @@ def test_health_and_error_format(client: TestClient) -> None:
     assert live.status_code == 200
     assert live.json() == {"status": "ok"}
     assert live.headers["X-Request-ID"] == "dd6e9c35-4b8c-41d9-b157-7d72b4c83968"
+    assert live.headers["X-Instance-ID"]
 
     unauthorized = client.get("/api/v1/units/")
     assert unauthorized.status_code == 401
     assert {"code", "message", "details", "request_id"} <= unauthorized.json().keys()
     assert unauthorized.json()["message"] == "Требуется авторизация"
+    assert unauthorized.headers["X-Instance-ID"]
 
 
 def test_authentication_and_csrf_are_required(client: TestClient) -> None:

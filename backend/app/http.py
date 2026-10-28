@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import socket
 from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
@@ -27,6 +28,7 @@ from app.postgresql import close_database, is_database_ready, session_scope
 
 logger = logging.getLogger(__name__)
 REQUEST_ID_HEADER = "X-Request-ID"
+INSTANCE_ID_HEADER = "X-Instance-ID"
 
 
 class HealthResponse(BaseModel):
@@ -62,6 +64,11 @@ def _valid_request_id(value: str | None) -> str:
         return str(UUID(value))
     except (ValueError, AttributeError):
         return str(uuid4())
+
+
+def _add_instance_id(response: JSONResponse) -> JSONResponse:
+    response.headers[INSTANCE_ID_HEADER] = socket.gethostname()
+    return response
 
 
 def _error_response(
@@ -100,11 +107,11 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
     )
 
     @application.middleware("http")
-    async def request_id_middleware(request: Request, call_next: Any) -> Any:
+    async def response_headers_middleware(request: Request, call_next: Any) -> Any:
         request.state.request_id = _valid_request_id(request.headers.get(REQUEST_ID_HEADER))
         response = await call_next(request)
         response.headers[REQUEST_ID_HEADER] = request.state.request_id
-        return response
+        return _add_instance_id(response)
 
     @application.exception_handler(RequestValidationError)
     async def validation_error_handler(
@@ -138,12 +145,14 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
             extra={"request_id": _get_request_id(request)},
             exc_info=exception,
         )
-        return _error_response(
+        response = _error_response(
             request,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             code="internal_error",
             message="Внутренняя ошибка сервера",
         )
+        response.headers[REQUEST_ID_HEADER] = _get_request_id(request)
+        return _add_instance_id(response)
 
     @application.get(
         "/health/live",
