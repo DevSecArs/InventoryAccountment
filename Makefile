@@ -168,7 +168,22 @@ test:
 		: 'Frontend: все тесты и покрытие'; \
 		mkdir -p "reports/$$run_id/frontend"; \
 		export REPORT_DIR=/workspace/reports/frontend; \
-		compose run --rm --no-deps frontend-test
+		if compose run --rm --no-deps frontend-test; then \
+		  frontend_result=0; \
+		else \
+		  frontend_result=$$?; \
+		fi; \
+		python3 -c 'import json, pathlib, sys; root=pathlib.Path(sys.argv[1]); cov=json.loads((root/"coverage-final.json").read_text()) if (root/"coverage-final.json").exists() else None; junit=root/"junit.xml"; tests=failures=None; \
+		if junit.exists(): \
+		 import xml.etree.ElementTree as ET; suite=ET.parse(junit).getroot(); tests=int(suite.attrib.get("tests", 0)); failures=int(suite.attrib.get("failures", 0))+int(suite.attrib.get("errors", 0)); \
+		if cov is None: print("Frontend: отчёт о покрытии не создан."); sys.exit(0); \
+		counts={"statements":[0,0],"branches":[0,0],"functions":[0,0],"lines":[0,0]}; \
+		for file in cov.values(): \
+		 for key, data in (("statements",file["s"]),("functions",file["f"]),("branches",file["b"])): counts[key][0]+=sum(v>0 for v in data.values()); counts[key][1]+=len(data) if key!="branches" else sum(len(v) for v in data.values())-sum(v>0 for v in data.values()); \
+		 for line in file["s"].values(): counts["lines"][0]+=line>0; counts["lines"][1]+=1; \
+		pct=lambda k: round(100*counts[k][0]/sum(counts[k]),2) if sum(counts[k]) else 100; \
+		print("Frontend: {} тестов, ошибок {}. Покрытие — инструкции {:.2f}%, ветвления {:.2f}%, функции {:.2f}%, строки {:.2f}%.".format(tests if tests is not None else "?", failures if failures is not None else "?", pct("statements"),pct("branches"),pct("functions"),pct("lines")))' "reports/$$run_id/frontend"; \
+		exit "$$frontend_result"
 
 quality:
 	@set -eu; \
