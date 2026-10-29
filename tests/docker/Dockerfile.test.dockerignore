@@ -39,5 +39,4 @@
 **/*.pem
 **/*.dump
 **/*.backup
-reports
-**/reports
+/reports/
