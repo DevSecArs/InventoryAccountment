@@ -148,8 +148,13 @@ cd ../frontend
 pnpm install --frozen-lockfile
 pnpm quality
 pnpm test:run
+pnpm test:coverage
 pnpm build
 ```
+
+Vitest использует React-плагин и явное преобразование JSX через Oxc, в том числе
+для неисполненных TSX-файлов в V8 coverage. `REPORT_DIR` задаёт каталог отчётов;
+без него используется `frontend/coverage`. Пороги остаются 40% по каждой метрике.
 
 Проверка Docker-конфигурации отдельно от unit-тестов, из корня:
 
