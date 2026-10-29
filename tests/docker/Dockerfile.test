@@ -4,9 +4,11 @@ FROM python:3.12.12-slim AS backend-test
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /workspace/backend
 ENV UV_COMPILE_BYTECODE=1 PATH="/workspace/backend/.venv/bin:$PATH"
+ENV UV_CACHE_DIR=/root/.cache/uv
 COPY backend/pyproject.toml backend/uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked uv sync --locked --extra dev
 COPY backend/app ./app
-RUN uv sync --locked --extra dev && useradd --create-home app \
+RUN useradd --create-home app \
     && chown app:app /workspace/backend \
     && chmod 1777 /workspace/backend
 COPY backend/alembic.ini ./alembic.ini
@@ -19,7 +21,8 @@ FROM node:24.21.0-bookworm-slim AS frontend-test
 WORKDIR /workspace/frontend
 RUN npm install --global pnpm@11.19.0
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm config set store-dir /pnpm/store
+RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile
 COPY frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore ./
 COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./
 COPY frontend/src ./src

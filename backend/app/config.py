@@ -9,11 +9,13 @@ class Settings(BaseSettings):
     DATABASE_URL: str = ""
     POSTGRES_HOST: str = "db"
     POSTGRES_USER: str = "inventory_app"
-    POSTGRES_PASSWORD: str = "local_inventory_password"
+    POSTGRES_PASSWORD: str = ""
     POSTGRES_DB: str = "inventory"
 
     @model_validator(mode="after")
     def configure_database(self) -> "Settings":
+        if not self.DATABASE_URL and not self.POSTGRES_PASSWORD.strip():
+            raise ValueError("POSTGRES_PASSWORD обязателен для подключения к PostgreSQL")
         if not self.DATABASE_URL:
             self.DATABASE_URL = URL.create(
                 "postgresql+psycopg2",
