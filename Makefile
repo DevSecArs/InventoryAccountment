@@ -51,9 +51,8 @@ setup:
 	if [ ! -e .env ]; then (umask 077; set -C; cat .env.example > .env) 2>/dev/null || { echo 'Ошибка: не удалось безопасно создать .env.' >&2; exit 1; }; chmod 600 .env || { echo 'Ошибка: не удалось установить права 0600 для .env.' >&2; exit 1; }; fi; \
 	check_path "$(PROJECT_ROOT)/.env" file; \
 	if [ "$$(stat -c %u .env)" = "$$(id -u)" ]; then chmod u=rw,go= .env || { echo 'Ошибка: невозможно установить безопасные права .env.' >&2; exit 1; }; \
-	else mode=$$(stat -c %a .env); [ $$(($$mode & 077)) -eq 0 ] || { echo 'Ошибка: права .env должны запрещать доступ группе и остальным; исправьте их как владелец.' >&2; exit 1; }; fi; \
-	if ! grep -q '^POSTGRES_PASSWORD=..*' .env; then echo 'Создан/сохранён .env. Заполните POSTGRES_PASSWORD уникальным секретом перед запуском.'; exit 0; fi; \
-	docker compose config --quiet || { echo 'Ошибка: конфигурация Docker Compose некорректна.' >&2; exit 1; }; \
+	else mode=$$(stat -c %a .env) || { echo 'Ошибка: невозможно проверить права .env.' >&2; exit 1; }; case "$$mode" in *[!0-7]*|'') echo 'Ошибка: невозможно распознать права .env.' >&2; exit 1;; esac; [ $$((0$$mode & 07077)) -eq 0 ] || { echo 'Ошибка: права .env должны быть 0600; исправьте их как владелец.' >&2; exit 1; }; fi; \
+	if ! docker compose config --quiet; then echo 'Ошибка: задайте непустой POSTGRES_PASSWORD в .env или окружении.' >&2; exit 1; fi; \
 	echo 'Проверка окружения завершена.'
 
 build: setup

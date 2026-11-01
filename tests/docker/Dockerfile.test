@@ -4,10 +4,11 @@ FROM python:3.12.12-slim AS backend-test
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /workspace/backend
 ENV UV_COMPILE_BYTECODE=1 PATH="/workspace/backend/.venv/bin:$PATH"
-ENV UV_CACHE_DIR=/root/.cache/uv
+ENV UV_CACHE_DIR=/root/.cache/uv UV_LINK_MODE=copy
 COPY backend/pyproject.toml backend/uv.lock ./
-RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked uv sync --locked --extra dev
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked uv sync --locked --extra dev --no-install-project
 COPY backend/app ./app
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked uv sync --locked --extra dev
 RUN useradd --create-home app \
     && chown app:app /workspace/backend \
     && chmod 1777 /workspace/backend

@@ -5,7 +5,9 @@ COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 PATH="/app/.venv/bin:$PATH"
 COPY backend/pyproject.toml backend/uv.lock ./
-ENV UV_CACHE_DIR=/root/.cache/uv
+ENV UV_CACHE_DIR=/root/.cache/uv UV_LINK_MODE=copy
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked uv sync --locked --no-dev --no-install-project
+COPY backend/app ./app
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked uv sync --locked --no-dev
 RUN useradd --create-home app
 COPY backend/alembic.ini ./
