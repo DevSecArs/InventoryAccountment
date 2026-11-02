@@ -5,7 +5,7 @@ PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ROOT_Q := '$(subst ','"'"',$(PROJECT_ROOT))'
 
 
-.PHONY: setup build up down migrate status test quality verify backup restore container-check
+.PHONY: setup build up down migrate status test quality security verify backup restore container-check
 
 setup:
 	@set -eu; \
@@ -189,6 +189,9 @@ quality:
 	echo '=============== Frontend: Semgrep ===============' && compose run --rm --no-deps frontend-sast sh -c 'semgrep --metrics=off --disable-version-check --config semgrep-rules.yml --json --output /workspace/reports/sast.json src; semgrep --metrics=off --disable-version-check --config semgrep-rules.yml src'; \
 	echo "Отчёты quality: reports/$$run_id/"
 
+security:
+	@cd $(ROOT_Q) && sh scripts/security.sh
+
 verify:
 	@set +e; \
 	echo '========== test =========='; \
@@ -197,6 +200,7 @@ verify:
 	  echo 'Результат verify:'; \
 	  echo '  test: ОШИБКА'; \
 	  echo '  quality: НЕ ЗАПУЩЕНО — ошибка test'; \
+	  echo '  security: НЕ ЗАПУЩЕНО — ошибка test'; \
 	  echo '  итог: ОШИБКА'; \
 	  exit 1; \
 	fi; \
@@ -205,11 +209,14 @@ verify:
 	$(MAKE) -f '$(abspath $(firstword $(MAKEFILE_LIST)))' quality; quality_result=$$?; \
 	echo 'Результат verify:'; \
 	echo '  test: УСПЕШНО'; \
-	if [ "$$quality_result" -eq 0 ]; then \
-	  echo '  quality: УСПЕШНО'; echo '  итог: УСПЕШНО'; \
-	else \
-	  echo '  quality: ОШИБКА'; echo '  итог: ОШИБКА'; exit 1; \
-	fi
+	if [ "$$quality_result" -ne 0 ]; then \
+	  echo '  quality: ОШИБКА'; echo '  security: НЕ ЗАПУЩЕНО — ошибка quality'; echo '  итог: ОШИБКА'; exit 1; \
+	fi; \
+	echo '  quality: УСПЕШНО'; echo '========== security =========='; \
+	$(MAKE) -f '$(abspath $(firstword $(MAKEFILE_LIST)))' security; security_result=$$?; \
+	echo 'Результат verify:'; echo '  test: УСПЕШНО'; echo '  quality: УСПЕШНО'; \
+	if [ "$$security_result" -eq 0 ]; then echo '  security: УСПЕШНО'; echo '  итог: УСПЕШНО'; \
+	else echo '  security: ОШИБКА'; echo '  итог: ОШИБКА'; exit 1; fi
 
 container-check:
 	@python3 scripts/container_check.py
