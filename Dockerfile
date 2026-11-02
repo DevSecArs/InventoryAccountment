@@ -1,6 +1,11 @@
 FROM ghcr.io/astral-sh/uv:0.9.5 AS uv
 
-FROM python:3.12.12-slim AS backend
+FROM python:3.12-slim-trixie@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30 AS backend
+# Менять дату при плановом обновлении пакетов, чтобы сбросить кеш этого слоя.
+ARG OS_SECURITY_REFRESH=2026-11-02
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 PATH="/app/.venv/bin:$PATH"

@@ -122,6 +122,14 @@ PostgreSQL в существующем томе; смену пароля вып�
 
 ## Управление и диагностика
 
+База backend закреплена по digest с явным Debian trixie. При плановом обновлении
+проверьте новый digest и измените `OS_SECURITY_REFRESH` в Dockerfile: обычная
+сборка может использовать кеш слоя apt. Для принудительного обновления пакетов:
+`docker compose build --pull --no-cache backend frontend`, затем `make security`.
+Пакеты apt берутся из текущего Debian-репозитория, поэтому даже при фиксированном
+digest их версии не воспроизводятся побитно; подтверждением исправлений служит
+новый Trivy-отчёт. Сборка не запускает и не обновляет работающие контейнеры.
+
 ```bash
 docker compose ps
 docker compose logs --tail=100 nginx backend db frontend
