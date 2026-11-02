@@ -7,6 +7,7 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 mkdir -p "$work/project/scripts" "$work/bin"
 cp "$root/scripts/security.sh" "$work/project/scripts/"
 cp "$root/scripts/security_policy.py" "$work/project/scripts/"
+cp "$root/scripts/security_workspace.py" "$work/project/scripts/"
 printf '#!/bin/sh\nexit 55\n' > "$work/bin/docker"
 chmod +x "$work/bin/docker"
 cd "$work/project"
