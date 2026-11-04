@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-REQUIRED_SERVICES = {"nginx", "backend", "frontend", "db"}
+REQUIRED_SERVICES = {"nginx", "backend", "db"}
 
 
 def _positive_number(value: Any) -> bool:
@@ -87,6 +87,8 @@ def validate(config: dict[str, Any], root: Path = ROOT) -> list[str]:
     for name in sorted(missing):
         errors.append(f"Compose: отсутствует обязательный сервис {name}")
 
+    check("frontend" not in services, "Compose: отдельный frontend-сервис запрещён")
+
     for instruction in re.finditer(r"(?im)^\s*FROM\s+(\S+)", dockerfile):
         image = instruction.group(1)
         check(not image.lower().endswith(":latest"), f"Dockerfile: запрещён latest ({image})")
@@ -102,16 +104,16 @@ def validate(config: dict[str, Any], root: Path = ROOT) -> list[str]:
         check(not _root_user(user), f"{name}: переопределение запуска от root запрещено")
         if name == "db":
             check(user == "postgres", "db: требуется user: postgres")
-        elif name in {"backend", "frontend"}:
-            expected_user = "app" if name == "backend" else "node"
+        elif name == "backend":
+            expected_user = "app"
             check(
                 user is None or not _root_user(user),
                 f"{name}: Compose не должен переопределять конечного пользователя {expected_user}",
             )
         elif name == "nginx":
             check(
-                image == "nginxinc/nginx-unprivileged:alpine",
-                "nginx: требуется образ nginxinc/nginx-unprivileged:alpine",
+                isinstance(service.get("build"), dict) and service["build"].get("target") == "nginx",
+                "nginx: требуется сборка цели nginx",
             )
             identity = _uid_gid(user)
             check(
@@ -164,30 +166,15 @@ def validate(config: dict[str, Any], root: Path = ROOT) -> list[str]:
         if isinstance(services.get("backend"), dict):
             check("container_name" not in services["backend"], "backend: container_name мешает масштабированию")
 
-        volumes = nginx.get("volumes", [])
-        valid_mount = False
-        if isinstance(volumes, list):
-            for volume in volumes:
-                if not isinstance(volume, dict):
-                    continue
-                source = Path(str(volume.get("source", "")))
-                try:
-                    source_matches = source.resolve() == (root / "nginx" / "default.conf").resolve()
-                except OSError:
-                    source_matches = False
-                if (
-                    source_matches
-                    and volume.get("target") == "/etc/nginx/conf.d/default.conf"
-                    and volume.get("read_only") is True
-                ):
-                    valid_mount = True
-        check(valid_mount, "nginx: nginx/default.conf должен быть подключён read-only")
+        check(not nginx.get("volumes"), "nginx: конфигурация и статика должны находиться в образе")
 
-    for stage, user in (("backend", "app"), ("frontend", "node")):
+    for stage, user in (("backend", "app"), ("nginx", "101:101")):
         pattern = rf"(?ims)^FROM\s+\S+\s+AS\s+{stage}\s*$([\s\S]*?)(?=^FROM\s|\Z)"
         match = re.search(pattern, dockerfile)
         users = re.findall(r"(?im)^USER\s+(\S+)", match.group(1)) if match else []
         check(bool(users) and users[-1] == user, f"{stage}: конечная инструкция USER должна быть {user}")
+    check(bool(re.search(r"(?im)^FROM\s+nginxinc/nginx-unprivileged:alpine\s+AS\s+nginx", dockerfile)), "nginx: требуется non-root базовый образ")
+    check("COPY nginx/default.conf /etc/nginx/conf.d/default.conf" in dockerfile, "nginx: конфигурация должна быть скопирована в образ")
 
     check(
         not re.search(r"(?im)^\s*(?:ARG|ENV)\s+\S*(?:PASSWORD|SECRET|TOKEN|API_KEY)\b", dockerfile),

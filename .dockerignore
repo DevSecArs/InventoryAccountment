@@ -1,6 +1,8 @@
 # Контекст содержит только исходники, необходимые Dockerfile.
 **
 !Dockerfile
+!nginx/
+!nginx/default.conf
 !backend/
 !backend/pyproject.toml
 !backend/uv.lock
@@ -14,11 +16,7 @@
 !frontend/pnpm-lock.yaml
 !frontend/pnpm-workspace.yaml
 !frontend/index.html
-!frontend/vite.config.ts
 !frontend/eslint.config.js
-!frontend/prettier.config.mjs
-!frontend/.prettierignore
-!frontend/tsconfig*.json
 !frontend/src/
 !frontend/src/**
 

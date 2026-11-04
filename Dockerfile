@@ -20,14 +20,14 @@ COPY backend/alembic ./alembic
 USER app
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "30"]
 
-FROM node:24.21.0-bookworm-slim AS frontend
-WORKDIR /app
-RUN npm install --global pnpm@11.19.0
-COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
-RUN pnpm config set store-dir /pnpm/store
-RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile && chown -R node:node /app
-COPY --chown=node:node frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore ./
-COPY --chown=node:node frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./
-COPY --chown=node:node frontend/src ./src
-USER node
-CMD ["pnpm", "dev", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]
+FROM nginxinc/nginx-unprivileged:alpine AS nginx
+USER root
+RUN apk upgrade --no-cache
+COPY nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY frontend/index.html /usr/share/nginx/html/index.html
+COPY frontend/src/entry.js /usr/share/nginx/html/src/entry.js
+COPY frontend/src/native /usr/share/nginx/html/src/native
+COPY frontend/src/api /usr/share/nginx/html/src/api
+COPY frontend/src/features/catalogs/formHelpers.js /usr/share/nginx/html/src/features/catalogs/formHelpers.js
+COPY frontend/src/styles /usr/share/nginx/html/src/styles
+USER 101:101

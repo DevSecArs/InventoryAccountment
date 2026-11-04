@@ -34,17 +34,10 @@ class SimpleDockerTests(unittest.TestCase):
     def test_backend_replicas_and_nginx_routing(self) -> None:
         self.assertEqual(self.services["backend"]["deploy"]["replicas"], 2)
         self.assertNotIn("container_name", self.services["backend"])
-        self.assertEqual(
-            self.services["frontend"]["environment"]["VITE_API_PROXY_TARGET"],
-            "http://nginx:8080",
-        )
+        self.assertNotIn("frontend", self.services)
         nginx = self.services["nginx"]
-        config_mount = next(
-            volume for volume in nginx["volumes"]
-            if volume["target"] == "/etc/nginx/conf.d/default.conf"
-        )
-        self.assertTrue(config_mount["read_only"])
-        self.assertEqual(set(nginx["depends_on"]), {"backend", "frontend"})
+        self.assertEqual(nginx["build"]["target"], "nginx")
+        self.assertEqual(set(nginx["depends_on"]), {"backend"})
         self.assertIn("server backend:8000 resolve max_fails=1 fail_timeout=5s", self.nginx_config)
         self.assertIn(
             "proxy_next_upstream error timeout http_502 http_503 http_504", self.nginx_config
@@ -55,11 +48,11 @@ class SimpleDockerTests(unittest.TestCase):
         self.assertIn("proxy_connect_timeout 3s", self.nginx_config)
         self.assertIn("proxy_read_timeout 30s", self.nginx_config)
         self.assertIn("location ~ ^/(api|health)(/|$)", self.nginx_config)
-        self.assertIn("map $http_upgrade $connection_upgrade", self.nginx_config)
-        self.assertIn("proxy_set_header Connection $connection_upgrade", self.nginx_config)
+        self.assertIn("try_files $uri /index.html", self.nginx_config)
+        self.assertIn("try_files $uri =404", self.nginx_config)
 
     def test_startup_waits_for_dependencies(self) -> None:
-        for service, dependency in (("backend", "db"), ("nginx", "backend"), ("nginx", "frontend")):
+        for service, dependency in (("backend", "db"), ("nginx", "backend")):
             self.assertEqual(
                 self.services[service]["depends_on"][dependency]["condition"],
                 "service_healthy",

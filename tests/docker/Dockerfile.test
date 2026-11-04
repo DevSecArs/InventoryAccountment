@@ -24,13 +24,13 @@ RUN npm install --global pnpm@11.19.0
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN pnpm config set store-dir /pnpm/store
 RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile
-COPY frontend/eslint.config.js frontend/prettier.config.mjs frontend/.prettierignore ./
-COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./
+COPY frontend/eslint.config.js ./
 COPY frontend/src ./src
+COPY frontend/tests ./tests
 RUN mkdir -p /workspace/reports && chown -R node:node /workspace
 USER node
 ENV HOME=/tmp
-CMD ["pnpm", "test:coverage"]
+CMD ["sh", "-c", "node --test --experimental-test-coverage --test-coverage-lines=40 --test-coverage-branches=40 --test-coverage-functions=40 --test-coverage-include='src/**/*.js' --test-coverage-exclude='**/*.test.js' --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=$REPORT_DIR/junit.xml --test-reporter=lcov --test-reporter-destination=$REPORT_DIR/coverage.lcov"]
 
 FROM semgrep/semgrep:1.99.0 AS frontend-sast
 WORKDIR /workspace

@@ -1,6 +1,6 @@
 # InventoryAccountment — складской учёт
 
-FastAPI / SQLAlchemy / PostgreSQL и React / TypeScript / Vite.
+FastAPI / SQLAlchemy / PostgreSQL и статический интерфейс на HTML, JavaScript и CSS.
 Приложение содержит авторизацию, справочники единиц, материалов и поставщиков,
 поступления, проведение, историю статусов и отчёт по поставкам с CSV.
 UI создаёт поступление с одной позицией; API поддерживает несколько позиций.
@@ -16,7 +16,7 @@ UI создаёт поступление с одной позицией; API п�
 
 ## Запуск
 
-Для Ubuntu Server нужны Docker Engine, Docker Compose v2 версии 2.20.0 или новее,
+Для Ubuntu Server нужны Docker Engine, Docker Compose v2 версии 2.22.0 или новее,
 GNU Make и POSIX shell. Настройте Docker daemon и доступ текущего пользователя.
 Создайте `.env` в корне проекта или запустите `make setup`: при отсутствии файла
 команда создаст его из `.env.example` с правами 0600. Заполните `POSTGRES_PASSWORD`
@@ -47,11 +47,15 @@ make status
 После SIGKILL или аварии хоста очистка не гарантируется.
 
 `make quality` выполняет backend Ruff, форматирование, mypy и Bandit, затем
-frontend Prettier, ESLint, TypeScript и локальный SAST Semgrep.
-Frontend-покрытие имеет глобальный минимум 40% по statements, branches,
-functions и lines; целевой ориентир — 60% по каждой метрике. Node.js, pnpm и
-Semgrep на хосте не нужны. Отчёты сохраняются в `reports/<идентификатор-запуска>/`:
-frontend JUnit, HTML и Cobertura, SAST JSON. SAST не гарантирует отсутствие
+frontend ESLint и локальный SAST Semgrep с контрольными примерами. Встроенный
+`node:test` проверяет lines, branches и functions с обязательным минимумом 40%
+и ориентиром 60%; независимой метрики statements у него нет. Discovery импортирует
+все прикладные модули без DOM-монтажа, поэтому страницы входят в покрытие. Unit-тесты
+не заменяют проверку интерфейса в браузере: показатели ветвей не подтверждают
+исполнение необращённых обработчиков, поэтому оценивайте также покрытие по файлам.
+Node.js, pnpm и Semgrep на хосте
+для Make-команд не нужны. Отчёты frontend включают JUnit и LCOV, SAST — JSON;
+HTML и Cobertura не создаются. SAST не гарантирует отсутствие
 уязвимостей и не проверяет зависимости. `make verify` последовательно запускает
 `make test`, после его успеха — `make quality`, затем `make security`; при первой
 ошибке останавливается и показывает итоговый статус. `make security` проверяет
@@ -78,7 +82,7 @@ Security использует контейнеры Gitleaks 8.24.2, uv 0.9.5, pi
 pnpm 11.19.0 и Trivy 0.59.1. История проверяется в отдельной bare-копии;
 shallow-история блокирует результат. Текущие исходники копируются во временный
 каталог без рабочего `.env`, создаётся тестовый env с фиктивным паролем.
-Собираются backend/frontend и загружаются образы db/nginx из Compose; их ID и
+Собираются backend и nginx со статикой, загружается образ db из Compose; их ID и
 digest записываются рядом с отчётами. Образы передаются Trivy архивами без доступа
 к Docker socket. HIGH, CRITICAL и неизвестная severity блокируют запуск, LOW и
 MEDIUM сохраняются в JSON. Ошибки загрузки базы, сети и сканеров также блокируют
@@ -89,32 +93,32 @@ severity в его базе и указанный в отчёте источни
 добавляется автоматически: при разборе сверяйте идентификаторы с GitHub Security
 Advisories или NVD и учитывайте применимость к версии зависимости.
 
-`make build` собирает backend/frontend и загружает образ PostgreSQL.
+`make build` собирает backend и nginx со статикой и загружает образ PostgreSQL.
 `make migrate` запускает только БД, ждёт её healthcheck и применяет миграции
 до head в одноразовом контейнере из готового backend-образа. Команда не собирает
 и не скачивает образы; при их отсутствии выполните `make build`. После изменения
 файлов миграций пересоберите образы перед запуском `make migrate`.
 `make up` запускает готовые образы в фоне, две реплики backend и ждёт healthcheck;
 сборку и миграции он не выполняет. После успешного запуска откройте http://localhost:8080.
-При диагностике используйте `docker compose logs --tail=100 backend db frontend nginx`.
+При диагностике используйте `docker compose logs --tail=100 backend db nginx`.
 
 Зарегистрируйте первого администратора после открытия интерфейса.
 Nginx работает с UID:GID 101:101 из `nginxinc/nginx-unprivileged:alpine` и является
 единственной внешней HTTP-точкой входа: порт 8080 хоста направлен на 8080 контейнера.
 Образ использует `/tmp` для PID и временных файлов; тег `alpine` плавающий.
-Nginx направляет
-`/api` и `/health` напрямую к двум backend, остальные запросы и WebSocket HMR —
-к единственному Vite dev server. Vite proxy для API/health внутри сети направлен
-через Nginx. Frontend, backend и PostgreSQL не публикуют порты на хост.
+При сборке Nginx обновляет пакеты Alpine; чтобы сбросить кеш этого слоя,
+используйте сборку с `--no-cache` и повторите `make security`.
+Nginx направляет `/api` и `/health` к двум backend, а остальные запросы
+обслуживает из статического каталога. Для путей страниц используется History
+fallback; отсутствующие JS, CSS и SVG возвращают 404. Индекс и нефингерпринтованные
+файлы не помечаются immutable. Backend и PostgreSQL не публикуют порты на хост.
 
-Dockerfile содержит цели backend и frontend. Backend запускает Uvicorn напрямую;
+Dockerfile содержит цели backend и nginx. Backend запускает Uvicorn напрямую;
 миграции применяются явно командой `make migrate`. Прямой `docker compose up`
 не подготавливает схему. `/health/ready` проверяет соединение с PostgreSQL,
-но не актуальность схемы. Зависимости устанавливаются
-по backend/uv.lock и frontend/pnpm-lock.yaml. Backend и frontend запускаются
-после готовности PostgreSQL и API соответственно.
-Backend работает от app, frontend — от node, PostgreSQL — от postgres.
-Локальные node_modules не копируются в образ.
+но не актуальность схемы. Backend устанавливается по `backend/uv.lock`, работает
+от app, PostgreSQL — от postgres. Node.js и pnpm используются только для проверок;
+в рабочем образе Nginx их нет. Локальные node_modules не копируются в образ.
 
 Compose автоматически читает необязательный `.env`; образец — [.env.example](.env.example).
 Git исключает `.env` и файлы `.env.*`; исключение оставлено только для
@@ -130,21 +134,21 @@ Git исключает `.env` и файлы `.env.*`; исключение ос�
 PostgreSQL в существующем томе; смену пароля выполняет владелец отдельно.
 Кеши сборки содержат только загруженные пакеты, без `.env` и секретов.
 Для CI используйте GitHub Actions Secrets и минимальные права штатного
-`GITHUB_TOKEN`; не передавайте секреты через build args, Docker ENV или `VITE_*`.
+`GITHUB_TOKEN`; не передавайте секреты через build args или Docker ENV.
 
 ## Управление и диагностика
 
 База backend закреплена по digest с явным Debian trixie. При плановом обновлении
 проверьте новый digest и измените `OS_SECURITY_REFRESH` в Dockerfile: обычная
 сборка может использовать кеш слоя apt. Для принудительного обновления пакетов:
-`docker compose build --pull --no-cache backend frontend`, затем `make security`.
+`docker compose build --pull --no-cache backend nginx`, затем `make security`.
 Пакеты apt берутся из текущего Debian-репозитория, поэтому даже при фиксированном
 digest их версии не воспроизводятся побитно; подтверждением исправлений служит
 новый Trivy-отчёт. Сборка не запускает и не обновляет работающие контейнеры.
 
 ```bash
 docker compose ps
-docker compose logs --tail=100 nginx backend db frontend
+docker compose logs --tail=100 nginx backend db
 curl http://localhost:8080/health/ready
 docker compose exec nginx nginx -t
 curl -sSI http://localhost:8080/health/live
@@ -154,7 +158,7 @@ docker compose down
 
 `make container-check` проверяет нормализованный Compose JSON и статические
 ограничения Dockerfile, `.dockerignore`, портов, пользователей, лимитов ресурсов,
-healthcheck и монтирования конфигурации. Команда требует Docker CLI и Compose,
+healthcheck и включения конфигурации в образ. Команда требует Docker CLI и Compose,
 но не запускает контейнеры. Это ограниченный статический аудит: он не доказывает
 содержимое образов, фактические UID процессов, работоспособность и отказоустойчивость.
 
@@ -163,7 +167,7 @@ DNS backend каждые 5 секунд, пассивно исключает н�
 повторяет только GET/HEAD один раз. Таймаут подключения 3 секунды ограничивает
 установление соединения; read timeout 30 секунд ограничивает паузу между чтениями
 от backend, но не полное время ответа. Отказоустойчивость покрывает отказ одной
-backend-реплики на одном хосте; Nginx, Vite, PostgreSQL и хост остаются единичными
+backend-реплики на одном хосте; Nginx, PostgreSQL и хост остаются единичными
 точками отказа.
 
 Данные находятся в именованном томе inventory_data проекта inventory-compose.
@@ -199,15 +203,13 @@ uv run --extra dev pip-audit
 ```bash
 cd ../frontend
 pnpm install --frozen-lockfile
-pnpm quality
-pnpm test:run
-pnpm test:coverage
-pnpm build
+pnpm lint
+node --test --experimental-test-coverage --test-coverage-lines=40 --test-coverage-branches=40 --test-coverage-functions=40 --test-coverage-include='src/**/*.js' --test-coverage-exclude='**/*.test.js'
 ```
 
-Vitest использует React-плагин и явное преобразование JSX через Oxc, в том числе
-для неисполненных TSX-файлов в V8 coverage. `REPORT_DIR` задаёт каталог отчётов;
-без него используется `frontend/coverage`. Пороги остаются 40% по каждой метрике.
+На Windows используйте эквивалентное экранирование аргументов оболочки. `node:test`
+не запускает DOM: визуальные сценарии, роли и клавиатуру проверяйте в браузере
+на изолированной БД. Порог backend остаётся 80%.
 
 Проверка Docker-конфигурации отдельно от unit-тестов, из корня:
 

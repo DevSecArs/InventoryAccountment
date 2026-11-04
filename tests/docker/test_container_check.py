@@ -21,33 +21,26 @@ def valid_fixture(root: Path = ROOT) -> dict:
     return {
         "services": {
             "nginx": {
-                "image": "nginxinc/nginx-unprivileged:alpine",
+                "build": {"target": "nginx"},
                 "user": "101:101",
                 "ports": [{"published": "8080", "target": 8080, "protocol": "tcp", "host_ip": "0.0.0.0"}],
-                "volumes": [{"type": "bind", "source": str(root / "nginx" / "default.conf"), "target": "/etc/nginx/conf.d/default.conf", "read_only": True}],
                 "healthcheck": {"test": ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health/live"]},
                 "cpus": 0.25,
-                "mem_limit": "128m",
+                "mem_limit": 134217728,
                 "pids_limit": 100,
             },
             "backend": {
                 "deploy": {"replicas": 2},
                 "healthcheck": {"test": ["CMD", "true"]},
                 "cpus": 0.75,
-                "mem_limit": "384m",
-                "pids_limit": 100,
-            },
-            "frontend": {
-                "healthcheck": {"test": ["CMD", "true"]},
-                "cpus": 1.0,
-                "mem_limit": "1024m",
+                "mem_limit": 402653184,
                 "pids_limit": 100,
             },
             "db": {
                 "user": "postgres",
                 "healthcheck": {"test": ["CMD", "true"]},
                 "cpus": 0.75,
-                "mem_limit": "384m",
+                "mem_limit": 402653184,
                 "pids_limit": 100,
             },
         }
@@ -74,18 +67,18 @@ class ContainerCheckTests(unittest.TestCase):
             (lambda c: c["services"].pop("db"), "отсутствует обязательный сервис"),
             (lambda c: c["services"]["backend"].update(deploy={"replicas": 1}), "replicas"),
             (lambda c: c["services"]["backend"].update(container_name="api"), "container_name"),
-            (lambda c: c["services"]["nginx"].update(image="nginx:latest"), "требуется образ"),
+            (lambda c: c["services"]["nginx"].update(build={"target": "wrong"}), "требуется сборка"),
             (lambda c: c["services"]["nginx"].update(user="0:101"), "UID:GID"),
             (lambda c: c["services"]["nginx"].update(user=None), "UID:GID"),
             (lambda c: c["services"]["nginx"].update(ports=[{"published": "80", "target": 80}]), "8080:8080"),
-            (lambda c: c["services"]["frontend"].update(ports=[{"published": "5173", "target": 5173}]), "публикация портов"),
-            (lambda c: c["services"]["frontend"].update(network_mode="host"), "network_mode"),
+            (lambda c: c["services"]["backend"].update(ports=[{"published": "5173", "target": 5173}]), "публикация портов"),
+            (lambda c: c["services"]["backend"].update(network_mode="host"), "network_mode"),
             (lambda c: c["services"]["backend"].update(healthcheck={"test": ["NONE"]}), "healthcheck"),
             (lambda c: c["services"]["backend"].update(healthcheck={"test": []}), "healthcheck"),
             (lambda c: c["services"]["backend"].update(cpus=0), "cpus"),
             (lambda c: c["services"]["backend"].update(mem_limit="bad"), "mem_limit"),
             (lambda c: c["services"]["backend"].update(pids_limit=-1), "pids_limit"),
-            (lambda c: c["services"]["nginx"].update(volumes=[]), "read-only"),
+            (lambda c: c["services"]["nginx"].update(volumes=[{"target": "/etc/nginx/conf.d/default.conf"}]), "должны находиться"),
         ]
         for mutate, expected in mutations:
             with self.subTest(expected=expected):
@@ -97,11 +90,11 @@ class ContainerCheckTests(unittest.TestCase):
         for value in ("root", "root:root", "0", "0:42", 0, "00:100"):
             with self.subTest(value=value):
                 config = valid_fixture()
-                config["services"]["frontend"]["user"] = value
+                config["services"]["backend"]["user"] = value
                 self.assertTrue(any("root" in error for error in container_check.validate(config)))
         config = valid_fixture()
-        config["services"]["frontend"]["user"] = "1000:0"
-        self.assertFalse(any("frontend:" in error for error in container_check.validate(config)))
+        config["services"]["backend"]["user"] = "1000:0"
+        self.assertFalse(any("backend:" in error for error in container_check.validate(config)))
 
     def test_vulnerable_legacy_port_schemes_are_rejected(self) -> None:
         for published, target in (("80", 80), ("5173", 5173)):
@@ -113,7 +106,7 @@ class ContainerCheckTests(unittest.TestCase):
     def test_multiple_errors_are_returned_together(self) -> None:
         config = valid_fixture()
         config["services"]["backend"]["cpus"] = 0
-        config["services"]["frontend"]["healthcheck"] = {"disable": True}
+        config["services"]["backend"]["healthcheck"] = {"disable": True}
         errors = container_check.validate(config)
         self.assertGreaterEqual(len(errors), 2)
 
@@ -125,7 +118,7 @@ class ContainerCheckTests(unittest.TestCase):
             (subprocess.CompletedProcess([], 0, "{broken", ""), "некорректный JSON"),
         ]
         for failure, expected in cases:
-            with self.subTest(expected=expected), patch.object(subprocess, "run", side_effect=failure):
+            with self.subTest(expected=expected), patch.object(subprocess, "run", **({"side_effect": failure} if isinstance(failure, Exception) else {"return_value": failure})):
                 with self.assertRaisesRegex(ValueError, expected) as context:
                     container_check.load_compose()
                 self.assertNotIn(secret, str(context.exception))
@@ -135,7 +128,7 @@ class ContainerCheckTests(unittest.TestCase):
             root = Path(temporary)
             (root / "Dockerfile").write_text("FROM python:3.12\n")
             output = io.StringIO()
-            with contextlib.redirect_stderr(output):
+            with contextlib.redirect_stderr(output), patch.object(container_check, "load_compose", return_value=valid_fixture(root)):
                 result = container_check.main(root)
         self.assertEqual(result, 1)
         self.assertIn("Не удалось прочитать", output.getvalue())

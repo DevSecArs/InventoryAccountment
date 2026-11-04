@@ -14,15 +14,11 @@
 !frontend/pnpm-lock.yaml
 !frontend/pnpm-workspace.yaml
 !frontend/index.html
-!frontend/vite.config.ts
 !frontend/eslint.config.js
-!frontend/prettier.config.mjs
-!frontend/.prettierignore
-!frontend/tsconfig.json
-!frontend/tsconfig.app.json
-!frontend/tsconfig.node.json
 !frontend/src/
 !frontend/src/**
+!frontend/tests/
+!frontend/tests/**
 !tests/docker/semgrep-rules.yml
 !tests/docker/semgrep-fixtures/
 !tests/docker/semgrep-fixtures/**

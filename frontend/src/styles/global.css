@@ -1056,3 +1056,16 @@ tbody tr:hover {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Нативный dialog наследует цвета приложения и затемняет фон. */
+dialog.modal {
+  color: var(--color-text);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+}
+dialog.modal::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+[hidden] {
+  display: none !important;
+}

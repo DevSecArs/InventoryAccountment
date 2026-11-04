@@ -56,7 +56,7 @@ case "$1" in
       *aquasec/trivy*)
         if [ "${MODE:-}" = signal ]; then kill -TERM "$PPID"; exit 1; fi
         if [ "${MODE:-}" = trivy ]; then exit 2; fi
-        for service in backend frontend db nginx; do
+        for service in backend db nginx; do
           case "$args" in *"/report/$service-trivy.json"*) printf '{"SchemaVersion":2,"Results":[{"Target":"image"}]}' > "$report/$service-trivy.json";; esac
         done;;
     esac;;
@@ -78,6 +78,9 @@ run_case() {
 run_case success
 [ "$code" -eq 0 ]
 grep -q 'nginx-trivy: SUCCESS' "$report/status.txt"
+grep -q 'backend-trivy: SUCCESS' "$report/status.txt"
+grep -q 'db-trivy: SUCCESS' "$report/status.txt"
+! grep -q 'frontend-trivy' "$report/status.txt"
 run_case findings
 [ "$code" -ne 0 ]
 grep -q 'gitleaks-source: FINDINGS' "$report/status.txt"

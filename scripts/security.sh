@@ -41,7 +41,13 @@ check_space() {
   fi
 }
 # Запас нужен копии исходников и базе Trivy; оценка не гарантирует размер архива.
-check_space 1048576 || exit 1
+if ! check_space 1048576; then
+  for stage in gitleaks-history gitleaks-source pip-audit pnpm-audit backend-trivy db-trivy nginx-trivy; do
+    printf '%s: NOT RUN\n' "$stage" >> "$report/status.txt"
+  done
+  echo "Отчёты: $report" >&2
+  exit 1
+fi
 mkdir "$work/source"
 
 # Проверяем полноту истории и создаём отдельную bare-копию без рабочего дерева.
@@ -121,21 +127,21 @@ compose() {
 }
 # Собираем рабочие образы и получаем внешние образы, указанные в Compose.
 build_ok=1
-if ! compose build backend frontend > "$report/build.log" 2>&1; then
+if ! compose build backend nginx > "$report/build.log" 2>&1; then
   echo 'Ошибка сборки рабочих образов; см. build.log.' >&2; status=1
   build_ok=0
 fi
 pull_ok=1
-if ! compose pull db nginx > "$report/pull.log" 2>&1; then
-  echo 'Ошибка получения образов db/nginx; см. pull.log.' >&2; status=1
+if ! compose pull db > "$report/pull.log" 2>&1; then
+  echo 'Ошибка получения образа db; см. pull.log.' >&2; status=1
   pull_ok=0
 fi
 if ! compose config --format json > "$work/compose.json" 2> "$report/compose.log"; then
   echo 'Ошибка чтения конфигурации Compose.' >&2; status=1; build_ok=0; pull_ok=0
 fi
 # Определяем точные образы, сохраняем их идентификаторы и передаём архивы Trivy.
-for service in backend frontend db nginx; do
-  case "$service" in backend|frontend) ready=$build_ok;; db|nginx) ready=$pull_ok;; esac
+for service in backend db nginx; do
+  case "$service" in backend|nginx) ready=$build_ok;; db) ready=$pull_ok;; esac
   if [ "$ready" -ne 1 ]; then result "$service-trivy" 'NOT RUN'; continue; fi
   image=$(docker run --rm -v "$work/compose.json:/compose.json:ro" python:3.12.12-slim \
     python -c 'import json,sys; s=json.load(open("/compose.json"))["services"][sys.argv[1]]; print(s.get("image") or sys.argv[2]+"-"+sys.argv[1])' "$service" "$project") || { result "$service-trivy" 'NOT RUN'; status=1; continue; }
