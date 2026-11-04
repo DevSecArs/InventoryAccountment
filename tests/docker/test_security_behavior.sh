@@ -51,7 +51,6 @@ case "$1" in
         printf '[]' > "$report/$file.json";;
       *'uv export'*) : > "$work/requirements.txt";;
       *pip-audit*) printf '{"dependencies":[]}' > "$report/pip-audit.json";;
-      *'pnpm audit'*) printf '{"advisories":{}}';;
       *'python -c'*) echo fake-image;;
       *aquasec/trivy*)
         if [ "${MODE:-}" = signal ]; then kill -TERM "$PPID"; exit 1; fi

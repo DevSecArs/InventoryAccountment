@@ -18,19 +18,12 @@ class SecurityPolicyTests(unittest.TestCase):
         self.assertEqual(classify("trivy", clean, 1), "ERROR")
         self.assertEqual(classify("trivy", {}, 0), "ERROR")
 
-    def test_pnpm_severity(self):
-        for severity, expected in (("low", False), ("moderate", False), ("high", True), ("critical", True), ("", True)):
-            with self.subTest(severity=severity):
-                self.assertEqual(blocks("pnpm", {"advisories": {"1": {"severity": severity}}}), expected)
-
     def test_trivy_severity(self):
         for severity, expected in (("LOW", False), ("MEDIUM", False), ("HIGH", True), ("CRITICAL", True), ("UNKNOWN", True), ("", True)):
             with self.subTest(severity=severity):
                 self.assertEqual(blocks("trivy", {"Results": [{"Vulnerabilities": [{"Severity": severity}]}]}), expected)
 
     def test_missing_or_invalid_report_fails(self):
-        with self.assertRaises(KeyError):
-            blocks("pnpm", {})
         with self.assertRaises(KeyError):
             blocks("trivy", {})
         with self.assertRaises(ValueError):

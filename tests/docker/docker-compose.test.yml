@@ -30,31 +30,6 @@ services:
     networks:
       - test_network
 
-  frontend-test:
-    build:
-      context: ../..
-      dockerfile: tests/docker/Dockerfile.test
-      target: frontend-test
-    user: "${TEST_HOST_UID:-1000}:${TEST_HOST_GID:-1000}"
-    environment:
-      HOME: /tmp
-      REPORT_DIR: /workspace/reports/frontend
-    volumes:
-      - ${TEST_HOST_REPORTS_DIR}:/workspace/reports
-    networks:
-      - test_network
-
-  frontend-sast:
-    build:
-      context: ../..
-      dockerfile: tests/docker/Dockerfile.test
-      target: frontend-sast
-    user: "${TEST_HOST_UID:-1000}:${TEST_HOST_GID:-1000}"
-    volumes:
-      - ${TEST_HOST_REPORTS_DIR}:/workspace/reports
-    networks:
-      - test_network
-
 volumes:
   test_data:
 

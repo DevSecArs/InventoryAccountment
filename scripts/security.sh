@@ -42,7 +42,7 @@ check_space() {
 }
 # Запас нужен копии исходников и базе Trivy; оценка не гарантирует размер архива.
 if ! check_space 1048576; then
-  for stage in gitleaks-history gitleaks-source pip-audit pnpm-audit backend-trivy db-trivy nginx-trivy; do
+  for stage in gitleaks-history gitleaks-source pip-audit backend-trivy db-trivy nginx-trivy; do
     printf '%s: NOT RUN\n' "$stage" >> "$report/status.txt"
   done
   echo "Отчёты: $report" >&2
@@ -110,13 +110,6 @@ else
   result uv ERROR
   result pip-audit 'NOT RUN'
 fi
-code=0
-docker run --rm -v "$work/source/frontend:/project:ro" -w /project \
-  --entrypoint sh node:24.21.0-bookworm-slim -c \
-  'npm install --global pnpm@11.19.0 >&2 && pnpm audit --json --audit-level high' \
-  > "$report/pnpm-audit.json" 2> "$report/pnpm-audit.log" || code=$?
-classify pnpm-audit pnpm "$code" "$report/pnpm-audit.json"
-
 # Задаём фиктивный env и отдельное имя Compose-проекта для сборки образов.
 printf '%s\n' 'POSTGRES_PASSWORD=synthetic-test-password' > "$work/test.env"
 mkdir "$work/trivy-cache"

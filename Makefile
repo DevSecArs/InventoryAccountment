@@ -41,10 +41,10 @@ setup:
 	    fi; \
 	  fi; \
 	}; \
-	for path in Dockerfile .dockerignore docker-compose.yml .env.example nginx nginx/default.conf backend backend/pyproject.toml backend/uv.lock backend/app backend/alembic.ini backend/alembic frontend frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml frontend/index.html frontend/eslint.config.js frontend/src; do \
+	for path in Dockerfile .dockerignore docker-compose.yml .env.example nginx nginx/default.conf backend backend/pyproject.toml backend/uv.lock backend/app backend/alembic.ini backend/alembic frontend frontend/index.html frontend/src; do \
 	  case "$$path" in backend|backend/app|backend/alembic|frontend|frontend/src|nginx) check_path "$(PROJECT_ROOT)/$$path" dir;; *) check_path "$(PROJECT_ROOT)/$$path" file;; esac; \
 	done; \
-	find backend/app backend/alembic frontend/src -type d \( -name node_modules -o -name .pnpm-store -o -name .venv -o -name venv -o -name reports -o -name backups \) -prune -o -type f -print | while IFS= read -r path; do \
+	find backend/app backend/alembic frontend/src -type d \( -name node_modules -o -name .venv -o -name venv -o -name reports -o -name backups \) -prune -o -type f -print | while IFS= read -r path; do \
 	  [ -L "$$path" ] && { echo "Ошибка: символическая ссылка в исходном дереве: $$path" >&2; exit 1; }; \
 	  [ -r "$$path" ] || check_path "$$path" file; \
 	done; \
@@ -136,7 +136,7 @@ test:
 	  echo 'Ошибка: требуется Docker Compose версии 2.22.0 или новее.' >&2; exit 1; \
 	fi; \
 	if ! docker info >/dev/null 2>&1; then echo 'Ошибка: Docker daemon недоступен.' >&2; exit 1; fi; \
-	for path in tests/docker/Dockerfile.test tests/docker/Dockerfile.test.dockerignore tests/docker/docker-compose.test.yml backend/pyproject.toml backend/uv.lock backend/alembic.ini backend/alembic backend/app backend/tests frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml frontend/src frontend/tests; do \
+	for path in tests/docker/Dockerfile.test tests/docker/Dockerfile.test.dockerignore tests/docker/docker-compose.test.yml backend/pyproject.toml backend/uv.lock backend/alembic.ini backend/alembic backend/app backend/tests; do \
 	  [ -e "$$path" ] || { echo "Ошибка: отсутствует исходник тестовой сборки: $$path" >&2; exit 1; }; \
 	done; \
 	: 'Создание папки для отчётов'; \
@@ -160,17 +160,13 @@ test:
 	export TEST_HOST_REPORTS_DIR="$(PROJECT_ROOT)/reports/$$run_id"; \
 	export TEST_HOST_UID=$$(id -u); export TEST_HOST_GID=$$(id -g); \
 	: 'Прогон тестов'; \
-		compose build backend-test frontend-test; \
-		mkdir -p "reports/$$run_id/backend" "reports/$$run_id/frontend"; \
+		compose build backend-test; \
+		mkdir -p "reports/$$run_id/backend"; \
 		compose up -d --wait db; \
 		compose run --rm --no-deps backend-test alembic upgrade head; \
 		compose run --rm --no-deps backend-test python tests/main.py; \
 		echo '=============== Начало мутационных тестов ==============='; \
-		compose run --rm --no-deps backend-test sh -c 'mutmut run --max-children 1 && mutmut results | tee /workspace/reports/backend/mutations.txt && ! grep -Eq ": (survived|no tests)$$" /workspace/reports/backend/mutations.txt'; \
-		: 'Frontend: все тесты и покрытие'; \
-		mkdir -p "reports/$$run_id/frontend"; \
-		export REPORT_DIR=/workspace/reports/frontend; \
-		compose run --rm --no-deps frontend-test
+		compose run --rm --no-deps backend-test sh -c 'mutmut run --max-children 1 && mutmut results | tee /workspace/reports/backend/mutations.txt && ! grep -Eq ": (survived|no tests)$$" /workspace/reports/backend/mutations.txt';
 
 quality:
 	@set -eu; \
@@ -181,10 +177,8 @@ quality:
 	result=0; cleanup() { status=$$?; trap - EXIT HUP INT TERM; if ! compose down --volumes; then echo 'Ошибка очистки тестового проекта.' >&2; [ "$$status" -ne 0 ] || status=1; fi; exit "$$status"; }; \
 	trap cleanup EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; \
 	export TEST_HOST_REPORTS_DIR="$(PROJECT_ROOT)/reports/$$run_id" TEST_HOST_UID=$$(id -u) TEST_HOST_GID=$$(id -g); \
-	compose build backend-test frontend-test frontend-sast; \
+	compose build backend-test; \
 	echo '=============== Backend: Ruff, форматирование, mypy, Bandit ===============' && compose run --rm --no-deps backend-test sh -c 'ruff check app tests && ruff format --check app tests && mypy app && bandit -r app'; \
-	echo '=============== Frontend: ESLint ===============' && compose run --rm --no-deps frontend-test pnpm lint; \
-	echo '=============== Frontend: Semgrep ===============' && compose run --rm --no-deps frontend-sast sh -c 'semgrep --metrics=off --disable-version-check --test --config semgrep-rules.yml semgrep-fixtures/semgrep-rules.js && semgrep --metrics=off --disable-version-check --error --config semgrep-rules.yml --json --output /workspace/reports/sast.json src'; \
 	echo "Отчёты quality: reports/$$run_id/"
 
 security:

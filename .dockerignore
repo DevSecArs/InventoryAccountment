@@ -12,11 +12,7 @@
 !backend/alembic/
 !backend/alembic/**
 !frontend/
-!frontend/package.json
-!frontend/pnpm-lock.yaml
-!frontend/pnpm-workspace.yaml
 !frontend/index.html
-!frontend/eslint.config.js
 !frontend/src/
 !frontend/src/**
 
@@ -25,7 +21,6 @@
 **/.env
 **/.env.*
 **/node_modules
-**/.pnpm-store
 **/secrets
 **/*.key
 **/*.pem

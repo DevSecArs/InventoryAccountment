@@ -9,26 +9,12 @@
 !backend/alembic/**
 !backend/tests/
 !backend/tests/**
-!frontend/
-!frontend/package.json
-!frontend/pnpm-lock.yaml
-!frontend/pnpm-workspace.yaml
-!frontend/index.html
-!frontend/eslint.config.js
-!frontend/src/
-!frontend/src/**
-!frontend/tests/
-!frontend/tests/**
-!tests/docker/semgrep-rules.yml
-!tests/docker/semgrep-fixtures/
-!tests/docker/semgrep-fixtures/**
 
 **/__pycache__
 **/*.py[cod]
 **/.env
 **/.env.*
 **/node_modules
-**/.pnpm-store
 **/.venv
 **/secrets
 **/*.key

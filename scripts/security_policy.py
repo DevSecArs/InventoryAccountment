@@ -5,9 +5,6 @@ import sys
 
 
 def blocks(scanner, report):
-    if scanner == "pnpm":
-        entries = report["advisories"].values()
-        return any(entry.get("severity", "").lower() not in {"low", "moderate"} for entry in entries)
     if scanner == "trivy":
         entries = (entry for result in report["Results"] or [] for entry in result.get("Vulnerabilities", []) or [])
         return any(entry.get("Severity", "").upper() not in {"LOW", "MEDIUM"} for entry in entries)
@@ -38,14 +35,9 @@ def classify(scanner, report, code):
             return "ERROR"
         if any(not isinstance(item, dict) or not item.get("Target") or not isinstance(item.get("Vulnerabilities", []), list) for item in report["Results"]):
             return "ERROR"
-    elif scanner == "pnpm":
-        if code not in (0, 1) or not isinstance(report, dict) or not isinstance(report.get("advisories"), dict):
-            return "ERROR"
     else:
         return "ERROR"
     found = blocks(scanner, report)
-    if scanner == "pnpm" and bool(code) != found:
-        return "ERROR"
     return "FINDINGS" if found else "SUCCESS"
 
 

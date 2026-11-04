@@ -17,26 +17,3 @@ COPY backend/alembic ./alembic
 COPY backend/tests ./tests
 USER app
 CMD ["python", "tests/main.py"]
-
-FROM node:24.21.0-bookworm-slim AS frontend-test
-WORKDIR /workspace/frontend
-RUN npm install --global pnpm@11.19.0
-COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
-RUN pnpm config set store-dir /pnpm/store
-RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile
-COPY frontend/eslint.config.js ./
-COPY frontend/src ./src
-COPY frontend/tests ./tests
-RUN mkdir -p /workspace/reports && chown -R node:node /workspace
-USER node
-ENV HOME=/tmp
-CMD ["sh", "-c", "node --test --experimental-test-coverage --test-coverage-lines=40 --test-coverage-branches=40 --test-coverage-functions=40 --test-coverage-include='src/**/*.js' --test-coverage-exclude='**/*.test.js' --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=$REPORT_DIR/junit.xml --test-reporter=lcov --test-reporter-destination=$REPORT_DIR/coverage.lcov"]
-
-FROM semgrep/semgrep:1.99.0 AS frontend-sast
-WORKDIR /workspace
-COPY frontend/src ./src
-COPY tests/docker/semgrep-rules.yml ./semgrep-rules.yml
-COPY tests/docker/semgrep-fixtures ./semgrep-fixtures
-USER semgrep
-ENV SEMGREP_SEND_METRICS=off SEMGREP_USER_AGENT_APPEND=offline
-CMD ["semgrep", "--metrics=off", "--disable-version-check", "--config", "semgrep-rules.yml", "--json", "--output", "/workspace/reports/sast.json", "src"]

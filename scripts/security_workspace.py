@@ -17,7 +17,7 @@ def main():
     ).split(b"\0")
     bad_env = []
     failed = False
-    excluded = {"node_modules", ".venv", "venv", ".pnpm-store", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "backups", "dumps", "volumes", ".data", ".git"}
+    excluded = {"node_modules", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "backups", "dumps", "volumes", ".data", ".git"}
     for raw in tracked:
         if raw:
             path = Path(os.fsdecode(raw))
