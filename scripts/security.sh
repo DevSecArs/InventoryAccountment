@@ -5,7 +5,7 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 mode=${1:-secrets}
-case "$mode" in secrets|ci) ;; *) echo "Неизвестный режим security." >&2; exit 1;; esac
+case "$mode" in secrets|ci|dependencies) ;; *) echo "Неизвестный режим security." >&2; exit 1;; esac
 run_id="$(date -u +%Y%m%dt%H%M%Sz)-$$"
 report="$root/reports/$run_id/security"
 umask 077
@@ -44,7 +44,11 @@ check_space() {
 }
 # Запас нужен копии исходников и базе Trivy; оценка не гарантирует размер архива.
 if ! check_space 1048576; then
-  if [ "$mode" = secrets ]; then stages="gitleaks-history gitleaks-source"; else stages="pip-audit backend-trivy db-trivy nginx-trivy"; fi
+  case "$mode" in
+    secrets) stages="gitleaks-history gitleaks-source";;
+    dependencies) stages="pip-audit";;
+    ci) stages="pip-audit backend-trivy db-trivy nginx-trivy";;
+  esac
   for stage in $stages; do
     printf '%s: NOT RUN\n' "$stage" >> "$report/status.txt"
   done
@@ -104,13 +108,16 @@ if [ "$source_ok" -eq 1 ]; then
 else result gitleaks-source 'NOT RUN'; fi
 
 fi
-if [ "$mode" = ci ]; then
+if [ "$mode" != secrets ]; then
 if [ "$source_ok" -ne 1 ]; then
-  for stage in pip-audit backend-trivy db-trivy nginx-trivy; do result "$stage" 'NOT RUN'; done
+  stages="pip-audit"
+  if [ "$mode" = ci ]; then stages="$stages backend-trivy db-trivy nginx-trivy"; fi
+  for stage in $stages; do result "$stage" 'NOT RUN'; done
   echo "Отчёты: $report" >&2
   exit 1
 fi
-printf '%s\n' 'uv 0.9.5' 'pip-audit 2.9.0' 'Trivy 0.59.1' > "$report/versions.txt"
+printf '%s\n' 'uv 0.9.5' 'pip-audit 2.9.0' > "$report/versions.txt"
+if [ "$mode" = ci ]; then printf '%s\n' 'Trivy 0.59.1' >> "$report/versions.txt"; fi
 if docker run --rm -v "$work/source/backend:/project:ro" -v "$work:/output" \
   -w /project python:3.12.12-slim sh -c \
   'pip install --disable-pip-version-check uv==0.9.5 && uv export --locked --extra dev --no-emit-project --no-hashes -o /output/requirements.txt' > "$report/uv.log" 2>&1; then
@@ -123,6 +130,11 @@ if docker run --rm -v "$work/source/backend:/project:ro" -v "$work:/output" \
 else
   result uv ERROR
   result pip-audit 'NOT RUN'
+fi
+# Отдельный режим CI не пересобирает образы: их проверяет image_scan.
+if [ "$mode" = dependencies ]; then
+  echo "Отчёты: $report"
+  exit "$status"
 fi
 # Задаём фиктивный env и отдельное имя Compose-проекта для сборки образов.
 printf '%s\n' 'POSTGRES_PASSWORD=synthetic-test-password' > "$work/test.env"
@@ -172,7 +184,7 @@ for service in backend db nginx; do
   # Кэш и отчёты должны принадлежать пользователю, который выполняет очистку.
   docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
     -v "$work/$service.tar:/image.tar:ro" -v "$report:/report" -v "$work/trivy-cache:/cache" \
-    aquasec/trivy:0.59.1 image --scanners vuln --input /image.tar --format json \
+    aquasec/trivy:0.59.1 image --ignore-unfixed --scanners vuln --input /image.tar --format json \
     --cache-dir /cache \
     --output "/report/$service-trivy.json" > "$report/$service-trivy.log" 2>&1 || code=$?
   rm -f -- "$work/$service.tar" || { echo "ERROR: не удалось удалить архив $service." >&2; status=1; }

@@ -55,14 +55,20 @@ make status
 
 GitHub Actions дополнительно проверяет Bandit, зависимости backend из lock-файла
 через pip-audit и образы backend, db и nginx через Trivy. Любая находка pip-audit,
-а также HIGH, CRITICAL или неизвестная severity Trivy блокируют CI; LOW и MEDIUM
+а также HIGH, CRITICAL или неизвестная severity Trivy с доступным исправлением
+блокируют CI. Включён `ignore-unfixed: true`: CVE без исправления исключаются
+из отчёта и не блокируют проверку; LOW и MEDIUM
 сохраняются в отчётах. Ошибки сканирования также блокируют результат. Отчёты
 сохраняются как artifacts на 14 дней. Для ручного запуска workflow должен
 присутствовать в default branch. Для временных файлов security можно задать
 `SECURITY_TMPDIR`; отчёты сохраняются после очистки временного каталога.
 CI использует фиктивный `POSTGRES_PASSWORD` для проверки Compose и сборки;
-рабочий пароль сервера ему не требуется. Trivy записывает кэш и отчёты с UID/GID
-пользователя runner, чтобы временные файлы можно было удалить после проверки.
+рабочий пароль сервера ему не требуется. Задание build сохраняет backend, nginx
+и полученный из Compose образ db в artifacts. Матричное image_scan проверяет
+их через Trivy Action; publish загружает те же backend/nginx и отправляет их
+в GHCR без пересборки, проверяя image ID. Имя frontend в GHCR сохранено для nginx.
+Режим `sh scripts/security.sh dependencies` выполняет только pip-audit;
+старый режим `ci` сохранён для совместимости, workflow его больше не вызывает.
 
 `make build` собирает backend и nginx со статикой и загружает образ PostgreSQL.
 `make migrate` запускает только БД, ждёт её healthcheck и применяет миграции

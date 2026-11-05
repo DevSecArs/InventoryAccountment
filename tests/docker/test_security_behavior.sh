@@ -92,6 +92,10 @@ grep -q 'nginx-trivy: SUCCESS' "$report/status.txt"
 grep -q 'backend-trivy: SUCCESS' "$report/status.txt"
 grep -q 'db-trivy: SUCCESS' "$report/status.txt"
 ! grep -q 'frontend-trivy' "$report/status.txt"
+run_case success dependencies
+[ "$code" -eq 0 ]
+grep -q 'pip-audit: SUCCESS' "$report/status.txt"
+! grep -Eq 'aquasec/trivy|^compose |^save ' "$CALLS"
 run_case findings
 [ "$code" -ne 0 ]
 grep -q 'gitleaks-source: FINDINGS' "$report/status.txt"

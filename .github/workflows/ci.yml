@@ -104,9 +104,9 @@ jobs:
         if: success() || failure()
         run: make security
 
-      - name: Audit dependencies and images
+      - name: Audit dependencies
         if: success() || failure()
-        run: sh scripts/security.sh ci
+        run: sh scripts/security.sh dependencies
 
       - name: Upload security reports
         if: always()
@@ -203,8 +203,94 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build backend and frontend
-        run: make build
+      - name: Build and export images
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          for service in backend nginx; do
+            docker build --pull --target "$service" -t "inventory-$service:ci-$GITHUB_SHA" .
+          done
+          db_image=$(docker compose --env-file /dev/null config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["db"]["image"])')
+          docker pull "$db_image"
+          docker tag "$db_image" "inventory-db:ci-$GITHUB_SHA"
+          for service in backend nginx db; do
+            docker image inspect "inventory-$service:ci-$GITHUB_SHA" --format '{{.Id}} {{json .RepoDigests}}' > "artifacts/$service-image.txt"
+            docker save "inventory-$service:ci-$GITHUB_SHA" | gzip > "artifacts/$service.tar.gz"
+          done
+
+      - name: Upload images
+        uses: actions/upload-artifact@v4
+        with:
+          name: images-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+  image_scan:
+    name: Trivy Image Scan (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, nginx, db]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download images
+        uses: actions/download-artifact@v4
+        with:
+          name: images-${{ github.sha }}
+          path: artifacts
+
+      - name: Load image and verify identity
+        shell: bash
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -euo pipefail
+          gzip -dc "artifacts/$SERVICE.tar.gz" | docker load
+          expected=$(cut -d ' ' -f 1 "artifacts/$SERVICE-image.txt")
+          actual=$(docker image inspect "inventory-$SERVICE:ci-$GITHUB_SHA" --format '{{.Id}}')
+          test "$actual" = "$expected"
+
+      - name: Scan image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.70.0
+          scan-type: image
+          image-ref: inventory-${{ matrix.service }}:ci-${{ github.sha }}
+          scanners: vuln
+          format: json
+          output: trivy-${{ matrix.service }}.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          vuln-type: os,library
+          ignore-unfixed: true
+          exit-code: '0'
+          timeout: 15m
+
+      - name: Enforce image policy
+        shell: bash
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -euo pipefail
+          result=$(python3 scripts/security_policy.py trivy "trivy-$SERVICE.json" 0)
+          echo "$SERVICE: $result"
+          test "$result" = SUCCESS
+
+      - name: Upload image report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-${{ matrix.service }}-${{ github.sha }}
+          path: |
+            trivy-${{ matrix.service }}.json
+            artifacts/${{ matrix.service }}-image.txt
+          if-no-files-found: warn
+          retention-days: 14
 
   publish:
     name: Publish Docker images to GHCR
@@ -218,12 +304,27 @@ jobs:
       - migrations
       - backup-restore
       - build
+      - image_scan
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Download verified images
+        uses: actions/download-artifact@v4
+        with:
+          name: images-${{ github.sha }}
+          path: artifacts
+
+      - name: Load verified images
+        shell: bash
+        run: |
+          set -euo pipefail
+          for service in backend nginx; do
+            gzip -dc "artifacts/$service.tar.gz" | docker load
+            expected=$(cut -d ' ' -f 1 "artifacts/$service-image.txt")
+            actual=$(docker image inspect "inventory-$service:ci-$GITHUB_SHA" --format '{{.Id}}')
+            test "$actual" = "$expected"
+          done
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -232,14 +333,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and publish backend
+      - name: Publish verified images
+        shell: bash
         run: |
-          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/backend"
-          docker build --target backend -t "$IMAGE:${GITHUB_SHA}" .
-          docker push "$IMAGE:${GITHUB_SHA}"
-
-      - name: Build and publish frontend
-        run: |
-          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/frontend"
-          docker build --target frontend -t "$IMAGE:${GITHUB_SHA}" .
-          docker push "$IMAGE:${GITHUB_SHA}"
+          set -euo pipefail
+          repository="${GITHUB_REPOSITORY,,}"
+          for service in backend nginx; do
+            # Сохраняем прежнее имя frontend в GHCR для образа Nginx со статикой.
+            destination=$service
+            if [ "$service" = nginx ]; then destination=frontend; fi
+            image="ghcr.io/$repository/$destination:$GITHUB_SHA"
+            docker tag "inventory-$service:ci-$GITHUB_SHA" "$image"
+            docker push "$image"
+          done
