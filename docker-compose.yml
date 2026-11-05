@@ -5,7 +5,10 @@ services:
     cpus: 0.75
     mem_limit: 384m
     pids_limit: 100
-    image: postgres:17.11-bookworm
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: db
     user: postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-inventory_app}

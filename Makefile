@@ -56,7 +56,7 @@ setup:
 	echo 'Проверка окружения завершена.'
 
 build: setup
-	@set -eu; cd $(ROOT_Q); docker compose build backend nginx; docker compose pull db
+	@set -eu; cd $(ROOT_Q); docker compose build backend nginx db
 
 up: setup
 	@set -eu; cd $(ROOT_Q); \
@@ -160,7 +160,7 @@ test:
 	export TEST_HOST_REPORTS_DIR="$(PROJECT_ROOT)/reports/$$run_id"; \
 	export TEST_HOST_UID=$$(id -u); export TEST_HOST_GID=$$(id -g); \
 	: 'Прогон тестов'; \
-		compose build backend-test; \
+		compose build backend-test db; \
 		mkdir -p "reports/$$run_id/backend"; \
 		compose up -d --wait db; \
 		compose run --rm --no-deps backend-test alembic upgrade head; \
@@ -177,7 +177,7 @@ quality:
 	result=0; cleanup() { status=$$?; trap - EXIT HUP INT TERM; if ! compose down --volumes; then echo 'Ошибка очистки тестового проекта.' >&2; [ "$$status" -ne 0 ] || status=1; fi; exit "$$status"; }; \
 	trap cleanup EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; \
 	export TEST_HOST_REPORTS_DIR="$(PROJECT_ROOT)/reports/$$run_id" TEST_HOST_UID=$$(id -u) TEST_HOST_GID=$$(id -g); \
-	compose build backend-test; \
+	compose build backend-test db; \
 	echo '=============== Backend: Ruff, форматирование, mypy, Bandit ===============' && compose run --rm --no-deps backend-test sh -c 'ruff check app tests && ruff format --check app tests && mypy app && bandit -r app'; \
 	echo "Отчёты quality: reports/$$run_id/"
 

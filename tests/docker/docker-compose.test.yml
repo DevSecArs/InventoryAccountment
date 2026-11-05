@@ -1,6 +1,10 @@
 services:
   db:
-    image: postgres:17.11-bookworm
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      target: db
+    user: postgres
     environment:
       POSTGRES_USER: inventory_test
       POSTGRES_PASSWORD: isolated_test_password

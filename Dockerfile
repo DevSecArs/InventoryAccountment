@@ -26,3 +26,8 @@ COPY frontend/src/api /usr/share/nginx/html/src/api
 COPY frontend/src/features/catalogs/formHelpers.js /usr/share/nginx/html/src/features/catalogs/formHelpers.js
 COPY frontend/src/styles /usr/share/nginx/html/src/styles
 USER 101:101
+
+FROM postgres:17.11-bookworm AS db
+# Понижение прав не требуется: БД всегда запускается от postgres.
+RUN rm /usr/local/bin/gosu
+USER postgres

@@ -83,13 +83,13 @@ GitHub Actions дополнительно проверяет Bandit, завис�
 `SECURITY_TMPDIR`; отчёты сохраняются после очистки временного каталога.
 CI использует фиктивный `POSTGRES_PASSWORD` для проверки Compose и сборки;
 рабочий пароль сервера ему не требуется. Задание build сохраняет backend, nginx
-и полученный из Compose образ db в artifacts. Матричное image_scan проверяет
+и db в artifacts. Матричное image_scan проверяет
 их через Trivy Action; publish загружает те же backend/nginx и отправляет их
 в GHCR без пересборки, проверяя image ID. Имя frontend в GHCR сохранено для nginx.
 Режим `sh scripts/security.sh dependencies` выполняет только pip-audit;
 старый режим `ci` сохранён для совместимости, workflow его больше не вызывает.
 
-`make build` собирает backend и nginx со статикой и загружает образ PostgreSQL.
+`make build` собирает backend, nginx со статикой и образ PostgreSQL.
 `make migrate` запускает только БД, ждёт её healthcheck и применяет миграции
 до head в одноразовом контейнере из готового backend-образа. Команда не собирает
 и не скачивает образы; при их отсутствии выполните `make build`. После изменения
@@ -249,3 +249,9 @@ uv run --extra dev pytest tests/unit tests/integration
 покрытие 84,72%; четыре проверки Compose и `git diff --check` прошли.
 Отчёты находятся в `reports/`. Рабочие контейнеры не перезапускались;
 CI, релиз и человеческая приёмка не проводились.
+
+Образ БД собирается целью `db` рабочего Dockerfile на базе PostgreSQL 17.11
+Bookworm. gosu удалён: поддерживается только запуск от `postgres`, включая
+инициализацию пустого именованного тома. Не переопределяйте пользователя на root.
+`make build` собирает также БД; CI сканирует производный образ без gosu.
+Перед обновлением рабочей БД подготовьте резервную копию и проверьте восстановление.

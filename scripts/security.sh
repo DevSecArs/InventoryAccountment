@@ -151,7 +151,7 @@ if ! compose build backend nginx > "$report/build.log" 2>&1; then
   build_ok=0
 fi
 pull_ok=1
-if ! compose pull db > "$report/pull.log" 2>&1; then
+if ! compose build db > "$report/pull.log" 2>&1; then
   echo 'Ошибка получения образа db; см. pull.log.' >&2; status=1
   pull_ok=0
 fi

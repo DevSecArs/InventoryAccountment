@@ -146,7 +146,7 @@ jobs:
 
           trap 'compose down --volumes' EXIT
 
-          compose build backend-test
+          compose build backend-test db
           compose up -d --wait db
           compose run --rm --no-deps backend-test alembic upgrade head
 
@@ -171,6 +171,7 @@ jobs:
 
           trap 'docker compose down --volumes' EXIT
 
+          docker compose build db
           docker compose up -d --wait db
 
           docker compose exec -T db sh -c \
@@ -208,12 +209,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          for service in backend nginx; do
+          for service in backend nginx db; do
             docker build --pull --target "$service" -t "inventory-$service:ci-$GITHUB_SHA" .
           done
-          db_image=$(docker compose --env-file /dev/null config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["db"]["image"])')
-          docker pull "$db_image"
-          docker tag "$db_image" "inventory-db:ci-$GITHUB_SHA"
           for service in backend nginx db; do
             docker image inspect "inventory-$service:ci-$GITHUB_SHA" --format '{{.Id}} {{json .RepoDigests}}' > "artifacts/$service-image.txt"
             docker save "inventory-$service:ci-$GITHUB_SHA" | gzip > "artifacts/$service.tar.gz"
