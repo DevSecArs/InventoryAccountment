@@ -107,7 +107,7 @@ Dockerfile содержит цели backend и nginx. Backend запускае�
 миграции применяются явно командой `make migrate`. Прямой `docker compose up`
 не подготавливает схему. `/health/ready` проверяет соединение с PostgreSQL,
 но не актуальность схемы. Backend устанавливается по `backend/uv.lock`, работает
-от app, PostgreSQL — от postgres. Frontend состоит из статических файлов и не требует установки пакетов.
+от UID 1001, PostgreSQL — от postgres. Frontend состоит из статических файлов и не требует установки пакетов.
 
 Compose автоматически читает необязательный `.env`; образец — [.env.example](.env.example).
 Git исключает `.env` и файлы `.env.*`; исключение оставлено только для
@@ -127,13 +127,14 @@ PostgreSQL в существующем томе; смену пароля вып�
 
 ## Управление и диагностика
 
-База backend закреплена по digest с явным Debian trixie. При плановом обновлении
-проверьте новый digest и измените `OS_SECURITY_REFRESH` в Dockerfile: обычная
-сборка может использовать кеш слоя apt. Для принудительного обновления пакетов:
-`docker compose build --pull --no-cache backend nginx`, затем `make security`.
-Пакеты apt берутся из текущего Debian-репозитория, поэтому даже при фиксированном
-digest их версии не воспроизводятся побитно; подтверждением исправлений служит
-новый Trivy-отчёт. Сборка не запускает и не обновляет работающие контейнеры.
+Backend устанавливается и запускается в одной стадии Red Hat UBI9 Python 3.12.
+Базовый образ закреплён по digest; для обновления проверьте новый digest UBI,
+обновите его в обоих Dockerfile, пересоберите образы и повторите `make security`.
+Исправления и оставшиеся уязвимости оцениваются по результатам сканирования.
+Виртуальное окружение находится в `/opt/app-root/src/.venv`; healthcheck
+использует его Python. Для проверки миграций в работающем контейнере:
+`docker compose exec backend /opt/app-root/src/.venv/bin/python -m alembic current`.
+Для применения используется `make migrate`.
 
 ```bash
 docker compose ps

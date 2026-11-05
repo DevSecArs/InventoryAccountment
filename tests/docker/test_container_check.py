@@ -31,7 +31,7 @@ def valid_fixture(root: Path = ROOT) -> dict:
             },
             "backend": {
                 "deploy": {"replicas": 2},
-                "healthcheck": {"test": ["CMD", "true"]},
+                "healthcheck": {"test": ["CMD", "/opt/app-root/src/.venv/bin/python", "-c", "pass"]},
                 "cpus": 0.75,
                 "mem_limit": 402653184,
                 "pids_limit": 100,
@@ -95,6 +95,18 @@ class ContainerCheckTests(unittest.TestCase):
         config = valid_fixture()
         config["services"]["backend"]["user"] = "1000:0"
         self.assertFalse(any("backend:" in error for error in container_check.validate(config)))
+
+    def test_backend_healthcheck_rejects_wrong_python(self) -> None:
+        config = valid_fixture()
+        config["services"]["backend"]["healthcheck"] = {"test": ["CMD", "python", "-c", "pass"]}
+        self.assertTrue(any("Python окружения" in error for error in container_check.validate(config)))
+
+    def test_backend_entrypoint_and_migration_command_match(self) -> None:
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+        self.assertIn('ENTRYPOINT ["/opt/app-root/src/.venv/bin/python"]', dockerfile)
+        self.assertIn('CMD ["-m", "uvicorn"', dockerfile)
+        self.assertIn("backend -m alembic upgrade head", makefile)
 
     def test_vulnerable_legacy_port_schemes_are_rejected(self) -> None:
         for published, target in (("80", 80), ("5173", 5173)):

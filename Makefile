@@ -97,7 +97,7 @@ migrate: setup
 	if ! docker compose up -d --wait --no-build --pull never --no-recreate db; then \
 	  echo 'Ошибка: база данных не запустилась или не прошла healthcheck. Диагностика: docker compose logs --tail=100 db.' >&2; exit 1; \
 	fi; \
-	if ! docker compose run --rm --no-deps --pull never backend alembic upgrade head; then \
+	if ! docker compose run --rm --no-deps --pull never backend -m alembic upgrade head; then \
 	  echo 'Ошибка: применение миграций завершилось неуспешно. База данных оставлена работающей.' >&2; exit 1; \
 	fi; \
 	echo 'Миграции успешно применены до head.'

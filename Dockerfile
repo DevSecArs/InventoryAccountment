@@ -1,24 +1,19 @@
 FROM ghcr.io/astral-sh/uv:0.9.5 AS uv
 
-FROM python:3.12-slim-trixie@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30 AS backend
-# Менять дату при плановом обновлении пакетов, чтобы сбросить кеш этого слоя.
-ARG OS_SECURITY_REFRESH=2026-11-02
-RUN apt-get update \
-    && apt-get upgrade -y \
-    && rm -rf /var/lib/apt/lists/*
+FROM registry.access.redhat.com/ubi9/python-312:1@sha256:19e1e927138b40454858f297884c2c4e2f13f5ba95b3f55faea174d3cbb57067 AS backend
 COPY --from=uv /uv /usr/local/bin/uv
-WORKDIR /app
-ENV UV_COMPILE_BYTECODE=1 PATH="/app/.venv/bin:$PATH"
-COPY backend/pyproject.toml backend/uv.lock ./
-ENV UV_CACHE_DIR=/root/.cache/uv UV_LINK_MODE=copy
-RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked uv sync --locked --no-dev --no-install-project
-COPY backend/app ./app
-RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked uv sync --locked --no-dev
-RUN useradd --create-home app
-COPY backend/alembic.ini ./
-COPY backend/alembic ./alembic
-USER app
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "30"]
+WORKDIR /opt/app-root/src
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \
+    UV_CACHE_DIR=/opt/app-root/src/.cache/uv PATH="/opt/app-root/src/.venv/bin:$PATH"
+COPY --chown=1001:0 backend/pyproject.toml backend/uv.lock ./
+RUN --mount=type=cache,target=/opt/app-root/src/.cache/uv,uid=1001,gid=0,sharing=locked uv sync --locked --no-dev --no-install-project --python /usr/bin/python3.12
+COPY --chown=1001:0 backend/app ./app
+RUN --mount=type=cache,target=/opt/app-root/src/.cache/uv,uid=1001,gid=0,sharing=locked uv sync --locked --no-dev --python /usr/bin/python3.12
+COPY --chown=1001:0 backend/alembic.ini ./
+COPY --chown=1001:0 backend/alembic ./alembic
+USER 1001
+ENTRYPOINT ["/opt/app-root/src/.venv/bin/python"]
+CMD ["-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "30"]
 
 FROM nginxinc/nginx-unprivileged:alpine AS nginx
 USER root
