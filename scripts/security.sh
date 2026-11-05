@@ -4,6 +4,8 @@ set -eu
 # Подготавливаем отдельный каталог отчётов и временное рабочее пространство.
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
+mode=${1:-secrets}
+case "$mode" in secrets|ci) ;; *) echo "Неизвестный режим security." >&2; exit 1;; esac
 run_id="$(date -u +%Y%m%dt%H%M%Sz)-$$"
 report="$root/reports/$run_id/security"
 umask 077
@@ -42,7 +44,8 @@ check_space() {
 }
 # Запас нужен копии исходников и базе Trivy; оценка не гарантирует размер архива.
 if ! check_space 1048576; then
-  for stage in gitleaks-history gitleaks-source pip-audit backend-trivy db-trivy nginx-trivy; do
+  if [ "$mode" = secrets ]; then stages="gitleaks-history gitleaks-source"; else stages="pip-audit backend-trivy db-trivy nginx-trivy"; fi
+  for stage in $stages; do
     printf '%s: NOT RUN\n' "$stage" >> "$report/status.txt"
   done
   echo "Отчёты: $report" >&2
@@ -53,6 +56,7 @@ mkdir "$work/source"
 # Проверяем полноту истории и создаём отдельную bare-копию без рабочего дерева.
 status=0
 history_ok=1
+if [ "$mode" = secrets ]; then
 if [ "$(git rev-parse --is-shallow-repository)" != false ]; then
   echo 'Ошибка: история Git неполная.' >&2
   status=1; history_ok=0
@@ -61,6 +65,7 @@ if ! git clone --bare --no-local "$root" "$work/history.git" > "$report/history-
   echo 'Ошибка копирования истории Git.' >&2; status=1; history_ok=0
 elif ! git --git-dir="$work/history.git" fsck --connectivity-only > "$report/history-fsck.log" 2>&1; then
   echo 'Ошибка целостности копии истории.' >&2; status=1; history_ok=0
+fi
 fi
 # Копирование обрабатывает имена Git с NUL и исключает рабочие данные.
 source_ok=1
@@ -82,6 +87,7 @@ classify() {
     result "$stage" ERROR
   fi
 }
+if [ "$mode" = secrets ]; then
 if [ "$history_ok" -eq 1 ]; then
   code=0
   docker run --rm -v "$work/history.git:/repo:ro" -v "$report:/report" \
@@ -97,6 +103,14 @@ if [ "$source_ok" -eq 1 ]; then
   classify gitleaks-source gitleaks "$code" "$report/gitleaks-source.json"
 else result gitleaks-source 'NOT RUN'; fi
 
+fi
+if [ "$mode" = ci ]; then
+if [ "$source_ok" -ne 1 ]; then
+  for stage in pip-audit backend-trivy db-trivy nginx-trivy; do result "$stage" 'NOT RUN'; done
+  echo "Отчёты: $report" >&2
+  exit 1
+fi
+printf '%s\n' 'uv 0.9.5' 'pip-audit 2.9.0' 'Trivy 0.59.1' > "$report/versions.txt"
 if docker run --rm -v "$work/source/backend:/project:ro" -v "$work:/output" \
   -w /project python:3.12.12-slim sh -c \
   'pip install --disable-pip-version-check uv==0.9.5 && uv export --locked --extra dev --no-emit-project --no-hashes -o /output/requirements.txt' > "$report/uv.log" 2>&1; then
@@ -162,6 +176,7 @@ for service in backend db nginx; do
   classify "$service-trivy" trivy "$code" "$report/$service-trivy.json"
 done
 
+fi
 # Возвращаем общий статус и оставляем отчёты после удаления временных файлов.
 if [ "$status" -ne 0 ]; then echo 'Одна или несколько проверок завершились ошибкой.' >&2; fi
 echo "Отчёты: $report"

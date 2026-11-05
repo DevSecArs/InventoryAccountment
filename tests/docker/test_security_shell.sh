@@ -18,5 +18,6 @@ if PATH="$work/bin:$PATH" sh scripts/security.sh > "$work/output" 2>&1; then
   exit 1
 fi
 set -- reports/*/security
-[ -d "$1" ] && [ -f "$1/uv.log" ] && [ -f "$1/build.log" ]
+[ -d "$1" ] && [ -f "$1/gitleaks-history.log" ] && [ -f "$1/gitleaks-source.log" ]
+[ ! -f "$1/uv.log" ] && [ ! -f "$1/build.log" ]
 echo 'Сбой Docker блокирует security; отчёты сохранены.'

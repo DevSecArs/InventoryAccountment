@@ -11,12 +11,22 @@ class SecurityPolicyTests(unittest.TestCase):
         self.assertEqual(classify("gitleaks", [{"RuleID": "fixture"}], 1), "FINDINGS")
         self.assertEqual(classify("gitleaks", [], 1), "ERROR")
         self.assertEqual(classify("gitleaks", [], 2), "ERROR")
-        clean = {"SchemaVersion": 2, "Results": [{"Target": "image"}]}
-        finding = {"SchemaVersion": 2, "Results": [{"Target": "image", "Vulnerabilities": [{"Severity": "HIGH"}]}]}
+        clean = {"SchemaVersion": 2, "Results": [{"Target": "image", "Class": "os-pkgs", "Type": "alpine"}]}
+        finding = {"SchemaVersion": 2, "Results": [{"Target": "image", "Class": "os-pkgs", "Type": "alpine", "Vulnerabilities": [{"Severity": "HIGH"}]}]}
         self.assertEqual(classify("trivy", clean, 0), "SUCCESS")
         self.assertEqual(classify("trivy", finding, 0), "FINDINGS")
         self.assertEqual(classify("trivy", clean, 1), "ERROR")
         self.assertEqual(classify("trivy", {}, 0), "ERROR")
+        self.assertEqual(classify("trivy", {"SchemaVersion": 2, "Results": []}, 0), "ERROR")
+
+    def test_pip_audit(self):
+        clean = {"dependencies": [{"name": "fixture", "vulns": []}]}
+        finding = {"dependencies": [{"name": "fixture", "vulns": [{"id": "fixture"}]}]}
+        self.assertEqual(classify("pip-audit", clean, 0), "SUCCESS")
+        self.assertEqual(classify("pip-audit", finding, 1), "FINDINGS")
+        self.assertEqual(classify("pip-audit", clean, 1), "ERROR")
+        self.assertEqual(classify("pip-audit", {"dependencies": []}, 0), "ERROR")
+        self.assertEqual(classify("pip-audit", clean, 2), "ERROR")
 
     def test_trivy_severity(self):
         for severity, expected in (("LOW", False), ("MEDIUM", False), ("HIGH", True), ("CRITICAL", True), ("UNKNOWN", True), ("", True)):

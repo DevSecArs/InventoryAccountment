@@ -7,7 +7,7 @@ import sys
 def blocks(scanner, report):
     if scanner == "trivy":
         entries = (entry for result in report["Results"] or [] for entry in result.get("Vulnerabilities", []) or [])
-        return any(entry.get("Severity", "").upper() not in {"LOW", "MEDIUM"} for entry in entries)
+        return any(str(entry.get("Severity") or "").upper() not in {"LOW", "MEDIUM"} for entry in entries)
     raise ValueError("Неизвестный сканер")
 
 
@@ -24,7 +24,7 @@ def classify(scanner, report, code):
         if code not in (0, 1) or not isinstance(report, dict) or not isinstance(report.get("dependencies"), list):
             return "ERROR"
         dependencies = report["dependencies"]
-        if any(not isinstance(item, dict) or not isinstance(item.get("vulns"), list) for item in dependencies):
+        if not dependencies or any(not isinstance(item, dict) or not isinstance(item.get("vulns"), list) for item in dependencies):
             return "ERROR"
         found = any(item["vulns"] for item in dependencies)
         if found != (code == 1):
@@ -32,6 +32,8 @@ def classify(scanner, report, code):
         return "FINDINGS" if found else "SUCCESS"
     if scanner == "trivy":
         if code != 0 or not isinstance(report, dict) or report.get("SchemaVersion") != 2 or not isinstance(report.get("Results"), list):
+            return "ERROR"
+        if not any(isinstance(item, dict) and item.get("Class") == "os-pkgs" and item.get("Type") for item in report["Results"]):
             return "ERROR"
         if any(not isinstance(item, dict) or not item.get("Target") or not isinstance(item.get("Vulnerabilities", []), list) for item in report["Results"]):
             return "ERROR"

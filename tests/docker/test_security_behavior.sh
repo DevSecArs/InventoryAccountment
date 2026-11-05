@@ -23,6 +23,7 @@ EOF
 cat > "$base/bin/docker" <<'EOF'
 #!/bin/sh
 set -eu
+printf '%s\n' "$*" >> "${CALLS:-/dev/null}"
 case "$1" in
   compose)
     case " $* " in *' config '*) printf '{}\n';; esac;;
@@ -50,24 +51,26 @@ case "$1" in
         if [ "${MODE:-}" = scanner ]; then exit 2; fi
         printf '[]' > "$report/$file.json";;
       *'uv export'*) : > "$work/requirements.txt";;
-      *pip-audit*) printf '{"dependencies":[]}' > "$report/pip-audit.json";;
+      *pip-audit*) printf '{"dependencies":[{"name":"fixture","version":"1","vulns":[]}]}' > "$report/pip-audit.json";;
       *'python -c'*) echo fake-image;;
       *aquasec/trivy*)
         if [ "${MODE:-}" = signal ]; then kill -TERM "$PPID"; exit 1; fi
         if [ "${MODE:-}" = trivy ]; then exit 2; fi
         for service in backend db nginx; do
-          case "$args" in *"/report/$service-trivy.json"*) printf '{"SchemaVersion":2,"Results":[{"Target":"image"}]}' > "$report/$service-trivy.json";; esac
+          case "$args" in *"/report/$service-trivy.json"*) printf '{"SchemaVersion":2,"Results":[{"Target":"image","Class":"os-pkgs","Type":"alpine"}]}' > "$report/$service-trivy.json";; esac
         done;;
     esac;;
 esac
 EOF
 chmod +x "$base/bin/df" "$base/bin/docker"
 export PATH="$base/bin:$PATH"
+export CALLS="$base/calls"
 run_case() {
   mode=$1
   rm -rf reports
   code=0
-  MODE=$mode sh scripts/security.sh > "$base/output" 2>&1 || code=$?
+  : > "$CALLS"
+  MODE=$mode sh scripts/security.sh "${2:-secrets}" > "$base/output" 2>&1 || code=$?
   if [ "$mode" = success ] && [ "$code" -ne 0 ]; then cat "$base/output"; fi
   set -- reports/*/security
   report=$1
@@ -75,6 +78,11 @@ run_case() {
   [ -z "$(find "$report" -name '*.tar' -o -name 'security-work.*')" ]
 }
 run_case success
+[ "$code" -eq 0 ]
+[ "$(wc -l < "$CALLS")" -eq 2 ]
+grep -q 'gitleaks-history: SUCCESS' "$report/status.txt"
+grep -q 'gitleaks-source: SUCCESS' "$report/status.txt"
+run_case success ci
 [ "$code" -eq 0 ]
 grep -q 'nginx-trivy: SUCCESS' "$report/status.txt"
 grep -q 'backend-trivy: SUCCESS' "$report/status.txt"
@@ -86,13 +94,13 @@ grep -q 'gitleaks-source: FINDINGS' "$report/status.txt"
 run_case scanner
 [ "$code" -ne 0 ]
 grep -q 'gitleaks-source: ERROR' "$report/status.txt"
-run_case export
+run_case export ci
 [ "$code" -ne 0 ]
 grep -q 'backend-trivy: NOT RUN' "$report/status.txt"
-run_case trivy
+run_case trivy ci
 [ "$code" -ne 0 ]
 grep -q 'backend-trivy: ERROR' "$report/status.txt"
-run_case signal
+run_case signal ci
 [ "$code" -ne 0 ]
 rm -rf reports
 if SPACE=1 sh scripts/security.sh > "$base/output" 2>&1; then exit 1; fi

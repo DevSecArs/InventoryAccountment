@@ -5,12 +5,14 @@ on:
     branches:
       - dev
       - main
+      - 'ci/test'
       - 'feature/**'
       - 'codex/**'
   pull_request:
     branches:
       - dev
       - main
+      - ci/test
   workflow_dispatch:
 
 permissions:
@@ -80,31 +82,38 @@ jobs:
   security:
     name: Static security analysis
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Run Bandit and pip-audit
+      - name: Run Bandit
         run: |
           mkdir -p reports/security
           docker build -q -f tests/docker/Dockerfile.test --target backend-test -t inventory-ci-security .
           docker run --rm --user "$(id -u):$(id -g)" \
-            -e HOME=/tmp \
-            -e UV_CACHE_DIR=/tmp/uv-cache \
-            -v "$PWD/reports/security:/reports" inventory-ci-security sh -c '
-            bandit -r app -f json -o /reports/bandit.json; bandit_status=$?
-            uv export --locked --all-extras --no-emit-project -o /tmp/requirements.txt || exit 1
-            pip-audit -r /tmp/requirements.txt --disable-pip --no-deps -f json -o /reports/pip-audit.json
-            audit_status=$?
-            [ "$bandit_status" -eq 0 ] && [ "$audit_status" -eq 0 ]
-          '
+            -v "$PWD/reports/security:/reports" inventory-ci-security \
+            bandit -r app -f json -o /reports/bandit.json
+
+      - name: Search secrets
+        if: success() || failure()
+        run: make security
+
+      - name: Audit dependencies and images
+        if: success() || failure()
+        run: sh scripts/security.sh ci
 
       - name: Upload security reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: security-reports
-          path: reports/security/
+          path: |
+            reports/security/bandit.json
+            reports/*/security/*.json
+            reports/*/security/*.log
+            reports/*/security/*.txt
           if-no-files-found: warn
           retention-days: 14
 
