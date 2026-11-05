@@ -5,7 +5,7 @@ services:
     cpus: 0.75
     mem_limit: 384m
     pids_limit: 100
-    image: postgres:17.6-bookworm
+    image: postgres:17.11-bookworm
     user: postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-inventory_app}

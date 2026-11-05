@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:17.6-bookworm
+    image: postgres:17.11-bookworm
     environment:
       POSTGRES_USER: inventory_test
       POSTGRES_PASSWORD: isolated_test_password
