@@ -1,0 +1,31 @@
+# Общий владелец проекта
+* @lyna917
+
+# Критические файлы: обязательно ревью DevSecArs
+/AGENTS.md @DevSecArs
+/README.md @DevSecArs
+/Makefile @DevSecArs
+/.github/ @DevSecArs
+
+/backend/tests/ @DevSecArs
+/backend/pyproject.toml @DevSecArs
+/backend/uv.lock @DevSecArs
+
+/frontend/**/*.test.* @DevSecArs
+/frontend/**/*.spec.* @DevSecArs
+/frontend/src/test/ @DevSecArs
+/frontend/package.json @DevSecArs
+/frontend/pnpm-lock.yaml @DevSecArs
+/frontend/vite.config.ts @DevSecArs
+/frontend/eslint.config.js @DevSecArs
+/frontend/prettier.config.mjs @DevSecArs
+/frontend/.prettierignore @DevSecArs
+/frontend/tsconfig*.json @DevSecArs
+/frontend/pnpm-workspace.yaml @DevSecArs
+/tests/ @DevSecArs
+/scripts/ @DevSecArs
+
+/Dockerfile @DevSecArs
+/.dockerignore @DevSecArs
+/docker-compose.yml @DevSecArs
+/nginx/ @DevSecArs
