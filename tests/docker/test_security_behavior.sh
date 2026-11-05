@@ -54,6 +54,10 @@ case "$1" in
       *pip-audit*) printf '{"dependencies":[{"name":"fixture","version":"1","vulns":[]}]}' > "$report/pip-audit.json";;
       *'python -c'*) echo fake-image;;
       *aquasec/trivy*)
+        # Не допускаем повторного создания кэша от root на Linux runner.
+        case "$args" in *" --user $(id -u):$(id -g) "*) ;; *) exit 91;; esac
+        case "$args" in *' -e HOME=/tmp '*) ;; *) exit 92;; esac
+        case "$args" in *':/cache '*' --cache-dir /cache '*) ;; *) exit 93;; esac
         if [ "${MODE:-}" = signal ]; then kill -TERM "$PPID"; exit 1; fi
         if [ "${MODE:-}" = trivy ]; then exit 2; fi
         for service in backend db nginx; do

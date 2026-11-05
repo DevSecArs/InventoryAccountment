@@ -18,6 +18,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Фиктивное значение только для изолированных проверок CI.
+  POSTGRES_PASSWORD: synthetic-ci-only-password
+
 jobs:
   container-check:
     name: Container security check

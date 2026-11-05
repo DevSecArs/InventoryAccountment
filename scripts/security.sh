@@ -169,8 +169,11 @@ for service in backend db nginx; do
     status=1; result "$service-trivy" 'NOT RUN'; continue
   fi
   code=0
-  docker run --rm -v "$work/$service.tar:/image.tar:ro" -v "$report:/report" -v "$work/trivy-cache:/root/.cache/" \
+  # Кэш и отчёты должны принадлежать пользователю, который выполняет очистку.
+  docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    -v "$work/$service.tar:/image.tar:ro" -v "$report:/report" -v "$work/trivy-cache:/cache" \
     aquasec/trivy:0.59.1 image --scanners vuln --input /image.tar --format json \
+    --cache-dir /cache \
     --output "/report/$service-trivy.json" > "$report/$service-trivy.log" 2>&1 || code=$?
   rm -f -- "$work/$service.tar" || { echo "ERROR: не удалось удалить архив $service." >&2; status=1; }
   classify "$service-trivy" trivy "$code" "$report/$service-trivy.json"
