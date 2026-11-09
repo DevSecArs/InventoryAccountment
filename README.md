@@ -99,9 +99,9 @@ CI использует фиктивный `POSTGRES_PASSWORD` для прове
 При диагностике используйте `docker compose logs --tail=100 backend db nginx`.
 
 Зарегистрируйте первого администратора после открытия интерфейса.
-Nginx работает с UID:GID 101:101 из `nginxinc/nginx-unprivileged:alpine` и является
+Nginx работает с UID:GID 101:101 из закреплённого образа `nginxinc/nginx-unprivileged` и является
 единственной внешней HTTP-точкой входа: порт 8080 хоста направлен на 8080 контейнера.
-Образ использует `/tmp` для PID и временных файлов; тег `alpine` плавающий.
+Образ использует `/tmp` для PID и временных файлов; версия и digest закреплены.
 При сборке Nginx обновляет пакеты Alpine; чтобы сбросить кеш этого слоя,
 используйте сборку с `--no-cache` и повторите проверку образов в CI.
 Nginx направляет `/api` и `/health` к двум backend, а остальные запросы
@@ -167,8 +167,53 @@ curl -fsS http://192.168.56.111:5000/v2/
 
 Ответ API — `{}`. Для остановки используйте
 `docker compose -f docker-compose.registry.yml down`: том сохраняется.
-Не используйте `down -v` для рабочего registry. Этап наполнения и перевода
-сборок на локальные образы выполняется отдельно.
+Не используйте `down -v` для рабочего registry. Образ самого registry в Compose
+остаётся bootstrap-образом из Docker Hub: его нужно заранее загрузить на VM,
+поскольку registry не может скачать себя при первом запуске.
+
+### Наполнение registry
+
+После запуска registry администратор копирует исходные многоплатформенные
+образы с сохранением digest. На VM установите `skopeo` из репозитория Ubuntu;
+для загрузки исходников нужны интернет и доступ к источникам. Команда ниже
+копирует все платформы и метаданные; ошибка означает, что наполнение не завершено.
+Не заменяйте её на обычные `docker pull/tag/push`: так переносится только
+текущая платформа. Теги назначения менять нельзя: ссылки сборок закреплены
+одновременно по версии и digest.
+
+```bash
+sudo apt-get update
+sudo apt-get install skopeo
+registry_copy_status=0
+while read -r source destination; do
+  skopeo copy --all --preserve-digests --dest-tls-verify=false \
+    "docker://$source" "docker://192.168.56.111:5000/$destination" || { registry_copy_status=1; break; }
+done <<'EOF'
+docker.io/library/registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373 library/registry:2.8.3
+ghcr.io/astral-sh/uv:0.9.5@sha256:f459f6f73a8c4ef5d69f4e6fbbdb8af751d6fa40ec34b39a1ab469acd6e289b7 astral-sh/uv:0.9.5
+registry.access.redhat.com/ubi9/python-312:1@sha256:19e1e927138b40454858f297884c2c4e2f13f5ba95b3f55faea174d3cbb57067 ubi9/python-312:1
+docker.io/nginxinc/nginx-unprivileged:1.29.3-alpine@sha256:5aea7cc516b419e3526f47dd1531be31a56a046cfe44754d94f9383e13e2ee99 nginxinc/nginx-unprivileged:1.29.3-alpine
+docker.io/library/postgres:17.11-bookworm@sha256:665dc7b37ac52a17e298511414c21d23ffa4e6a6ef6225b3e5d59c7afb35e994 library/postgres:17.11-bookworm
+docker.io/library/python:3.12.12-slim@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c library/python:3.12.12-slim
+docker.io/zricethezav/gitleaks:v8.24.2@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4 zricethezav/gitleaks:v8.24.2
+docker.io/aquasec/trivy:0.59.1@sha256:029e990b328d149bf0a9ffe355919041e1f86192db2df47e217f8a36dd42ceac aquasec/trivy:0.59.1
+EOF
+test "$registry_copy_status" -eq 0
+```
+
+Для проверки каждой ссылки сравните digest исходного и локального манифеста
+через `skopeo inspect --raw` и `sha256sum`, а платформы — через
+`docker buildx imagetools inspect`. Загрузка базы уязвимостей Trivy из внешнего
+OCI-источника разрешена отдельно от исполняемых образов. Trivy Action в CI —
+composite action, устанавливающий исполняемый файл, а не Docker action.
+
+Сборки и локальные проверки после наполнения используют локальные ссылки.
+До перевода CI на self-hosted runner существующие GitHub-hosted задания могут
+не иметь доступа к частному адресу registry и завершаться ошибкой; успешность CI
+на этом этапе не предполагается. На Docker Desktop с containerd image store
+возможен сбой HTTP pull; на проверенной конфигурации Windows помогло переключение
+на классическое хранилище. Переключение меняет видимость образов и контейнеров.
+
 
 Backend устанавливается и запускается в одной стадии Red Hat UBI9 Python 3.12.
 Базовый образ закреплён по digest; для обновления проверьте новый digest UBI,

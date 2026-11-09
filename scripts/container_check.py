@@ -173,12 +173,12 @@ def validate(config: dict[str, Any], root: Path = ROOT) -> list[str]:
         match = re.search(pattern, dockerfile)
         users = re.findall(r"(?im)^USER\s+(\S+)", match.group(1)) if match else []
         check(bool(users) and users[-1] == user, f"{stage}: конечная инструкция USER должна быть {user}")
-    check(bool(re.search(r"(?im)^FROM\s+registry\.access\.redhat\.com/ubi9/python-312:[^\s@]+@sha256:[0-9a-f]{64}\s+AS\s+backend\s*$", dockerfile)), "backend: требуется закреплённый UBI9 Python 3.12")
+    check(bool(re.search(r"(?im)^FROM\s+192\.168\.56\.111:5000/ubi9/python-312:[^\s@]+@sha256:[0-9a-f]{64}\s+AS\s+backend\s*$", dockerfile)), "backend: требуется закреплённый UBI9 Python 3.12")
     backend = services.get("backend", {})
     if isinstance(backend, dict):
         health = backend.get("healthcheck", {}).get("test", [])
         check(isinstance(health, list) and len(health) >= 3 and health[:2] == ["CMD", "/opt/app-root/src/.venv/bin/python"], "backend: healthcheck должен использовать Python окружения")
-    check(bool(re.search(r"(?im)^FROM\s+nginxinc/nginx-unprivileged:alpine\s+AS\s+nginx", dockerfile)), "nginx: требуется non-root базовый образ")
+    check(bool(re.search(r"(?im)^FROM\s+192\.168\.56\.111:5000/nginxinc/nginx-unprivileged:[^\s@]+@sha256:[0-9a-f]{64}\s+AS\s+nginx", dockerfile)), "nginx: требуется non-root базовый образ")
     check("COPY nginx/default.conf /etc/nginx/conf.d/default.conf" in dockerfile, "nginx: конфигурация должна быть скопирована в образ")
 
     check(
