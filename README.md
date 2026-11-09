@@ -189,21 +189,24 @@ while read -r source destination; do
   skopeo copy --all --preserve-digests --dest-tls-verify=false \
     "docker://$source" "docker://192.168.56.111:5000/$destination" || { registry_copy_status=1; break; }
 done <<'EOF'
-docker.io/library/registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373 library/registry:2.8.3
-ghcr.io/astral-sh/uv:0.9.5@sha256:f459f6f73a8c4ef5d69f4e6fbbdb8af751d6fa40ec34b39a1ab469acd6e289b7 astral-sh/uv:0.9.5
-registry.access.redhat.com/ubi9/python-312:1@sha256:19e1e927138b40454858f297884c2c4e2f13f5ba95b3f55faea174d3cbb57067 ubi9/python-312:1
-docker.io/nginxinc/nginx-unprivileged:1.29.3-alpine@sha256:5aea7cc516b419e3526f47dd1531be31a56a046cfe44754d94f9383e13e2ee99 nginxinc/nginx-unprivileged:1.29.3-alpine
-docker.io/library/postgres:17.11-bookworm@sha256:665dc7b37ac52a17e298511414c21d23ffa4e6a6ef6225b3e5d59c7afb35e994 library/postgres:17.11-bookworm
-docker.io/library/python:3.12.12-slim@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c library/python:3.12.12-slim
-docker.io/zricethezav/gitleaks:v8.24.2@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4 zricethezav/gitleaks:v8.24.2
-docker.io/aquasec/trivy:0.59.1@sha256:029e990b328d149bf0a9ffe355919041e1f86192db2df47e217f8a36dd42ceac aquasec/trivy:0.59.1
+docker.io/library/registry@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373 library/registry:2.8.3
+ghcr.io/astral-sh/uv@sha256:f459f6f73a8c4ef5d69f4e6fbbdb8af751d6fa40ec34b39a1ab469acd6e289b7 astral-sh/uv:0.9.5
+registry.access.redhat.com/ubi9/python-312@sha256:19e1e927138b40454858f297884c2c4e2f13f5ba95b3f55faea174d3cbb57067 ubi9/python-312:1
+docker.io/nginxinc/nginx-unprivileged@sha256:5aea7cc516b419e3526f47dd1531be31a56a046cfe44754d94f9383e13e2ee99 nginxinc/nginx-unprivileged:1.29.3-alpine
+docker.io/library/postgres@sha256:665dc7b37ac52a17e298511414c21d23ffa4e6a6ef6225b3e5d59c7afb35e994 library/postgres:17.11-bookworm
+docker.io/library/python@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c library/python:3.12.12-slim
+docker.io/zricethezav/gitleaks@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4 zricethezav/gitleaks:v8.24.2
+docker.io/aquasec/trivy@sha256:029e990b328d149bf0a9ffe355919041e1f86192db2df47e217f8a36dd42ceac aquasec/trivy:0.59.1
 EOF
 test "$registry_copy_status" -eq 0
 ```
 
 Для проверки каждой ссылки сравните digest исходного и локального манифеста
 через `skopeo inspect --raw` и `sha256sum`, а платформы — через
-`docker buildx imagetools inspect`. Загрузка базы уязвимостей Trivy из внешнего
+`docker buildx imagetools inspect`. В Bash перед проверкой конвейеров включите
+`set -o pipefail`: иначе ошибка Skopeo может выглядеть как хеш пустого ввода.
+В источниках Skopeo используйте `имя@digest` без тега: сочетание тега и digest
+эта утилита не принимает. Версия сохранена в теге назначения. Загрузка базы уязвимостей Trivy из внешнего
 OCI-источника разрешена отдельно от исполняемых образов. Trivy Action в CI —
 composite action, устанавливающий исполняемый файл, а не Docker action.
 
