@@ -51,13 +51,31 @@ class ContainerCheckTests(unittest.TestCase):
     def test_all_build_stages_use_pinned_local_images(self) -> None:
         import re
 
-        for name in ("Dockerfile", "tests/docker/Dockerfile.test"):
+        for name in ("Dockerfile", "tests/docker/Dockerfile.test", "docker/postgres/Dockerfile"):
             content = (ROOT / name).read_text(encoding="utf-8")
             images = re.findall(r"(?im)^FROM\s+(\S+)", content)
             self.assertTrue(images)
             for image in images:
                 with self.subTest(file=name, image=image):
                     self.assertRegex(image, r"^192\.168\.56\.111:5000/.+:[^@]+@sha256:[0-9a-f]{64}$")
+
+    def test_registry_compose_uses_existing_volume(self) -> None:
+        import os
+
+        environment = os.environ.copy()
+        for name in ("COMPOSE_PROJECT_NAME", "COMPOSE_FILE", "COMPOSE_PROFILES"):
+            environment.pop(name, None)
+        result = subprocess.run(
+            ["docker", "compose", "-f", "docker-compose.registry.yml", "config", "--format", "json"],
+            cwd=ROOT,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        config = json.loads(result.stdout)
+        self.assertEqual(config["name"], "inventory-registry")
+        self.assertEqual(config["volumes"]["registry_data"]["name"], "inventory-registry_registry_data")
 
     def test_import_does_not_call_subprocess(self) -> None:
         with patch.object(subprocess, "run", side_effect=AssertionError("subprocess вызван")):

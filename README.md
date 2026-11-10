@@ -138,6 +138,10 @@ PostgreSQL в существующем томе; смену пароля вып�
 
 Registry работает по HTTP без TLS и аутентификации. Он предназначен
 только для доверенной локальной сети и не должен публиковаться в интернет.
+Любой узел с доступом к порту может читать и записывать образы. Доступ
+ограничивается сетевым экраном только доверенными узлами; привязка к адресу VM
+не ограничивает отправителей, а опубликованные Docker порты могут обходить UFW.
+Сетевое ограничение пока отложено владельцем стенда и не проверено.
 
 ### Настройка Docker Engine
 
@@ -166,7 +170,9 @@ curl -f http://192.168.56.111:5000/v2/
 
 Успешный ответ Registry: `{}`.
 
-Данные хранятся в Docker-томе `registry_data`.
+Данные хранятся в Docker-томе `inventory-registry_registry_data`.
+Имя проекта `inventory-registry` задано в Compose; не переопределяйте его
+через `-p` или `COMPOSE_PROJECT_NAME`, иначе будет выбран другой том.
 Не удаляйте этот том при очистке Docker.
 Контейнер настроен на автоматический перезапуск (`unless-stopped`).
 
@@ -205,6 +211,7 @@ ghcr.io/astral-sh/uv@sha256:f459f6f73a8c4ef5d69f4e6fbbdb8af751d6fa40ec34b39a1ab4
 registry.access.redhat.com/ubi9/python-312@sha256:19e1e927138b40454858f297884c2c4e2f13f5ba95b3f55faea174d3cbb57067 ubi9/python-312:1
 docker.io/nginxinc/nginx-unprivileged@sha256:5aea7cc516b419e3526f47dd1531be31a56a046cfe44754d94f9383e13e2ee99 nginxinc/nginx-unprivileged:1.29.3-alpine
 docker.io/library/postgres@sha256:665dc7b37ac52a17e298511414c21d23ffa4e6a6ef6225b3e5d59c7afb35e994 library/postgres:17.11-bookworm
+docker.io/library/golang@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0 library/golang:1.27-bookworm
 docker.io/library/python@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c library/python:3.12.12-slim
 docker.io/zricethezav/gitleaks@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4 zricethezav/gitleaks:v8.24.2
 docker.io/aquasec/trivy@sha256:029e990b328d149bf0a9ffe355919041e1f86192db2df47e217f8a36dd42ceac aquasec/trivy:0.59.1
@@ -249,13 +256,18 @@ docker build -f docker/postgres/Dockerfile -t inventory-postgres-reproducible:lo
 источнику зависимостей. Полностью автономная сборка пока
 не гарантируется.
 
-Исправленный PostgreSQL загружен в локальный Registry:
+Рабочая и тестовая конфигурации ожидают в локальном Registry образ PostgreSQL:
 
 `192.168.56.111:5000/inventory/postgres:17.11-gosu1.20`
 
 Его закреплённый digest:
 
 `sha256:beda889504259e25f6a148e9460de62ade9072d48a48c31483a3c9d80e6aa0e4`
+
+Проверьте его наличие по digest до запуска проверок. Приведённая выше сборка
+создаёт локальный образ и сама по себе не публикует его. Сборка и публикация
+не гарантируют совпадения digest с закреплённым; при несовпадении не меняйте
+рабочие ссылки без проверки образа и согласования нового набора.
 
 ### Проверки
 
@@ -283,9 +295,9 @@ backend, db и nginx через Trivy.
 
 ### Ограничения
 
-Локальный Registry не заменяет публикацию в GHCR через GitHub Actions.
-Файл `.github/workflows/ci.yml` в рамках локальной настройки
-не изменяется.
+Локальный Registry пока не заменяет публикацию в GHCR через GitHub Actions.
+Workflow уже использует локальные образы, но ещё выполняется на GitHub-hosted
+runner, который может не иметь маршрута к registry.
 
 Registry работает по HTTP, поэтому доступ к порту 5000
 должен быть ограничен доверенной сетью.
