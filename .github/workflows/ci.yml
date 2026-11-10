@@ -5,14 +5,6 @@ on:
     branches:
       - dev
       - main
-      - 'ci/test'
-      - 'feature/**'
-      - 'codex/**'
-  pull_request:
-    branches:
-      - dev
-      - main
-      - ci/test
   workflow_dispatch:
 
 permissions:
@@ -24,8 +16,9 @@ env:
 
 jobs:
   container-check:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
     name: Container security check
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, inventory-registry]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,8 +27,9 @@ jobs:
         run: make container-check
 
   tests:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
     name: Backend tests and mutation testing
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, inventory-registry]
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -54,8 +48,9 @@ jobs:
           retention-days: 14
 
   style:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
     name: Code style and typing
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, inventory-registry]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -84,8 +79,9 @@ jobs:
           retention-days: 14
 
   security:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
     name: Static security analysis
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, inventory-registry]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -122,8 +118,9 @@ jobs:
           retention-days: 14
 
   migrations:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
     name: Database migrations
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, inventory-registry]
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -151,8 +148,9 @@ jobs:
           compose run --rm --no-deps backend-test alembic upgrade head
 
   backup-restore:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
     name: PostgreSQL backup and restore
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, inventory-registry]
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -196,8 +194,9 @@ jobs:
           echo "Backup и restore: OK"
 
   build:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
     name: Build Docker images
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, inventory-registry]
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -209,14 +208,14 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts
           for service in backend nginx; do
-            docker build --pull --target "$service" -t "inventory-$service:ci-$GITHUB_SHA" .
+            docker build --pull --target "$service" -t "inventory-$service:ci-$GITHUB_RUN_ID" .
           done
           db_image=$(docker compose --env-file /dev/null config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["db"]["image"])')
           docker pull "$db_image"
-          docker tag "$db_image" "inventory-db:ci-$GITHUB_SHA"
+          docker tag "$db_image" "inventory-db:ci-$GITHUB_RUN_ID"
           for service in backend nginx db; do
-            docker image inspect "inventory-$service:ci-$GITHUB_SHA" --format '{{.Id}} {{json .RepoDigests}}' > "artifacts/$service-image.txt"
-            docker save "inventory-$service:ci-$GITHUB_SHA" | gzip > "artifacts/$service.tar.gz"
+            docker image inspect "inventory-$service:ci-$GITHUB_RUN_ID" --format '{{.Id}} {{json .RepoDigests}}' > "artifacts/$service-image.txt"
+            docker save "inventory-$service:ci-$GITHUB_RUN_ID" | gzip > "artifacts/$service.tar.gz"
           done
 
       - name: Upload images
@@ -228,8 +227,9 @@ jobs:
           retention-days: 14
 
   image_scan:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
     name: Trivy Image Scan (${{ matrix.service }})
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, inventory-registry]
     timeout-minutes: 30
     needs: build
     strategy:
@@ -253,7 +253,7 @@ jobs:
           set -euo pipefail
           gzip -dc "artifacts/$SERVICE.tar.gz" | docker load
           expected=$(cut -d ' ' -f 1 "artifacts/$SERVICE-image.txt")
-          actual=$(docker image inspect "inventory-$SERVICE:ci-$GITHUB_SHA" --format '{{.Id}}')
+          actual=$(docker image inspect "inventory-$SERVICE:ci-$GITHUB_RUN_ID" --format '{{.Id}}')
           test "$actual" = "$expected"
 
       - name: Scan image
@@ -261,7 +261,7 @@ jobs:
         with:
           version: v0.70.0
           scan-type: image
-          image-ref: inventory-${{ matrix.service }}:ci-${{ github.sha }}
+          image-ref: inventory-${{ matrix.service }}:ci-${{ github.run_id }}
           scanners: vuln
           format: json
           output: trivy-${{ matrix.service }}.json
@@ -293,8 +293,8 @@ jobs:
           retention-days: 14
 
   publish:
-    name: Publish Docker images to GHCR
-    runs-on: ubuntu-latest
+    name: Publish verified images to local registry
+    runs-on: [self-hosted, linux, x64, inventory-registry]
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
     needs:
       - container-check
@@ -307,7 +307,6 @@ jobs:
       - image_scan
     permissions:
       contents: read
-      packages: write
     steps:
       - name: Download verified images
         uses: actions/download-artifact@v4
@@ -319,30 +318,38 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for service in backend nginx; do
+          for service in backend nginx db; do
             gzip -dc "artifacts/$service.tar.gz" | docker load
             expected=$(cut -d ' ' -f 1 "artifacts/$service-image.txt")
-            actual=$(docker image inspect "inventory-$service:ci-$GITHUB_SHA" --format '{{.Id}}')
+            actual=$(docker image inspect "inventory-$service:ci-$GITHUB_RUN_ID" --format '{{.Id}}')
             test "$actual" = "$expected"
           done
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish verified images
         shell: bash
         run: |
           set -euo pipefail
-          repository="${GITHUB_REPOSITORY,,}"
-          for service in backend nginx; do
-            # Сохраняем прежнее имя frontend в GHCR для образа Nginx со статикой.
+          mkdir -p published
+          for service in backend nginx db; do
             destination=$service
             if [ "$service" = nginx ]; then destination=frontend; fi
-            image="ghcr.io/$repository/$destination:$GITHUB_SHA"
-            docker tag "inventory-$service:ci-$GITHUB_SHA" "$image"
-            docker push "$image"
+            image="192.168.56.111:5000/inventory/$destination:$GITHUB_SHA"
+            source="inventory-$service:ci-$GITHUB_RUN_ID"
+            expected=$(cut -d ' ' -f 1 "artifacts/$service-image.txt")
+            test "$(docker image inspect "$source" --format '{{.Id}}')" = "$expected"
+            docker tag "$source" "$image"
+            test "$(docker image inspect "$image" --format '{{.Id}}')" = "$expected"
+            docker push "$image" | tee "published/$service-push.log"
+            digest=$(sed -nE 's/.*digest: (sha256:[0-9a-f]{64}).*/\1/p' "published/$service-push.log" | tail -n 1)
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            printf '%s@%s\n' "${image%:*}" "$digest" > "published/$service-image.txt"
           done
+
+      - name: Upload published image digests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: published-images-${{ github.run_id }}-${{ github.run_attempt }}
+          path: published/
+          if-no-files-found: warn
+          retention-days: 14
