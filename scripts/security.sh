@@ -5,6 +5,9 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 mode=${1:-secrets}
+gitleaks_image=192.168.56.111:5000/zricethezav/gitleaks:v8.24.2@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4
+python_image=192.168.56.111:5000/library/python:3.12.12-slim@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c
+trivy_image=192.168.56.111:5000/aquasec/trivy:0.59.1@sha256:029e990b328d149bf0a9ffe355919041e1f86192db2df47e217f8a36dd42ceac
 case "$mode" in secrets|ci|dependencies) ;; *) echo "Неизвестный режим security." >&2; exit 1;; esac
 run_id="$(date -u +%Y%m%dt%H%M%Sz)-$$"
 report="$root/reports/$run_id/security"
@@ -95,14 +98,14 @@ if [ "$mode" = secrets ]; then
 if [ "$history_ok" -eq 1 ]; then
   code=0
   docker run --rm -v "$work/history.git:/repo:ro" -v "$report:/report" \
-    192.168.56.111:5000/zricethezav/gitleaks:v8.24.2@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4 git /repo --log-opts=--all --redact=100 \
+    "$gitleaks_image" git /repo --log-opts=--all --redact=100 \
     --report-format json --report-path /report/gitleaks-history.json --no-banner > "$report/gitleaks-history.log" 2>&1 || code=$?
   classify gitleaks-history gitleaks "$code" "$report/gitleaks-history.json"
 else result gitleaks-history 'NOT RUN'; fi
 if [ "$source_ok" -eq 1 ]; then
   code=0
   docker run --rm -v "$work/source:/source:ro" -v "$report:/report" \
-    192.168.56.111:5000/zricethezav/gitleaks:v8.24.2@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4 dir /source --redact=100 \
+    "$gitleaks_image" dir /source --redact=100 \
     --report-format json --report-path /report/gitleaks-source.json --no-banner > "$report/gitleaks-source.log" 2>&1 || code=$?
   classify gitleaks-source gitleaks "$code" "$report/gitleaks-source.json"
 else result gitleaks-source 'NOT RUN'; fi
@@ -119,11 +122,11 @@ fi
 printf '%s\n' 'uv 0.9.5' 'pip-audit 2.9.0' > "$report/versions.txt"
 if [ "$mode" = ci ]; then printf '%s\n' 'Trivy 0.59.1' >> "$report/versions.txt"; fi
 if docker run --rm -v "$work/source/backend:/project:ro" -v "$work:/output" \
-  -w /project python:3.12.12-slim sh -c \
+  -w /project "$python_image" sh -c \
   'pip install --disable-pip-version-check uv==0.9.5 && uv export --locked --extra dev --no-emit-project --no-hashes -o /output/requirements.txt' > "$report/uv.log" 2>&1; then
   code=0
   docker run --rm -v "$work/requirements.txt:/requirements.txt:ro" -v "$report:/report" \
-    --entrypoint sh python:3.12.12-slim -c \
+    --entrypoint sh "$python_image" -c \
     'pip install --disable-pip-version-check pip-audit==2.9.0 && pip-audit -r /requirements.txt --format json --output /report/pip-audit.json' \
     > "$report/pip-audit.log" 2>&1 || code=$?
   classify pip-audit pip-audit "$code" "$report/pip-audit.json"
@@ -162,7 +165,7 @@ fi
 for service in backend db nginx; do
   case "$service" in backend|nginx) ready=$build_ok;; db) ready=$pull_ok;; esac
   if [ "$ready" -ne 1 ]; then result "$service-trivy" 'NOT RUN'; continue; fi
-  image=$(docker run --rm -v "$work/compose.json:/compose.json:ro" python:3.12.12-slim \
+  image=$(docker run --rm -v "$work/compose.json:/compose.json:ro" "$python_image" \
     python -c 'import json,sys; s=json.load(open("/compose.json"))["services"][sys.argv[1]]; print(s.get("image") or sys.argv[2]+"-"+sys.argv[1])' "$service" "$project") || { result "$service-trivy" 'NOT RUN'; status=1; continue; }
   if ! image_id=$(docker image inspect "$image" --format '{{.Id}}'); then
     echo "Образ $service недоступен." >&2; result "$service-trivy" 'NOT RUN'; status=1; continue
@@ -184,7 +187,7 @@ for service in backend db nginx; do
   # Кэш и отчёты должны принадлежать пользователю, который выполняет очистку.
   docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
     -v "$work/$service.tar:/image.tar:ro" -v "$report:/report" -v "$work/trivy-cache:/cache" \
-    192.168.56.111:5000/aquasec/trivy:0.59.1@sha256:029e990b328d149bf0a9ffe355919041e1f86192db2df47e217f8a36dd42ceac image --ignore-unfixed --scanners vuln --input /image.tar --format json \
+    "$trivy_image" image --ignore-unfixed --scanners vuln --input /image.tar --format json \
     --cache-dir /cache \
     --output "/report/$service-trivy.json" > "$report/$service-trivy.log" 2>&1 || code=$?
   rm -f -- "$work/$service.tar" || { echo "ERROR: не удалось удалить архив $service." >&2; status=1; }

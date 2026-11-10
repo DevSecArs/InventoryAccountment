@@ -48,6 +48,17 @@ def valid_fixture(root: Path = ROOT) -> dict:
 
 
 class ContainerCheckTests(unittest.TestCase):
+    def test_all_build_stages_use_pinned_local_images(self) -> None:
+        import re
+
+        for name in ("Dockerfile", "tests/docker/Dockerfile.test"):
+            content = (ROOT / name).read_text(encoding="utf-8")
+            images = re.findall(r"(?im)^FROM\s+(\S+)", content)
+            self.assertTrue(images)
+            for image in images:
+                with self.subTest(file=name, image=image):
+                    self.assertRegex(image, r"^192\.168\.56\.111:5000/.+:[^@]+@sha256:[0-9a-f]{64}$")
+
     def test_import_does_not_call_subprocess(self) -> None:
         with patch.object(subprocess, "run", side_effect=AssertionError("subprocess вызван")):
             spec = importlib.util.spec_from_file_location("container_check_import", ROOT / "scripts" / "container_check.py")
