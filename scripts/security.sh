@@ -95,14 +95,14 @@ if [ "$mode" = secrets ]; then
 if [ "$history_ok" -eq 1 ]; then
   code=0
   docker run --rm -v "$work/history.git:/repo:ro" -v "$report:/report" \
-    zricethezav/gitleaks:v8.24.2 git /repo --log-opts=--all --redact=100 \
+    192.168.56.111:5000/zricethezav/gitleaks:v8.24.2@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4 git /repo --log-opts=--all --redact=100 \
     --report-format json --report-path /report/gitleaks-history.json --no-banner > "$report/gitleaks-history.log" 2>&1 || code=$?
   classify gitleaks-history gitleaks "$code" "$report/gitleaks-history.json"
 else result gitleaks-history 'NOT RUN'; fi
 if [ "$source_ok" -eq 1 ]; then
   code=0
   docker run --rm -v "$work/source:/source:ro" -v "$report:/report" \
-    zricethezav/gitleaks:v8.24.2 dir /source --redact=100 \
+    192.168.56.111:5000/zricethezav/gitleaks:v8.24.2@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4 dir /source --redact=100 \
     --report-format json --report-path /report/gitleaks-source.json --no-banner > "$report/gitleaks-source.log" 2>&1 || code=$?
   classify gitleaks-source gitleaks "$code" "$report/gitleaks-source.json"
 else result gitleaks-source 'NOT RUN'; fi
@@ -184,7 +184,7 @@ for service in backend db nginx; do
   # Кэш и отчёты должны принадлежать пользователю, который выполняет очистку.
   docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
     -v "$work/$service.tar:/image.tar:ro" -v "$report:/report" -v "$work/trivy-cache:/cache" \
-    aquasec/trivy:0.59.1 image --ignore-unfixed --scanners vuln --input /image.tar --format json \
+    192.168.56.111:5000/aquasec/trivy:0.59.1@sha256:029e990b328d149bf0a9ffe355919041e1f86192db2df47e217f8a36dd42ceac image --ignore-unfixed --scanners vuln --input /image.tar --format json \
     --cache-dir /cache \
     --output "/report/$service-trivy.json" > "$report/$service-trivy.log" 2>&1 || code=$?
   rm -f -- "$work/$service.tar" || { echo "ERROR: не удалось удалить архив $service." >&2; status=1; }

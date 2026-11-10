@@ -1,6 +1,9 @@
-FROM ghcr.io/astral-sh/uv:0.9.5 AS uv
+FROM 192.168.56.111:5000/astral-sh/uv:0.9.5@sha256:f459f6f73a8c4ef5d69f4e6fbbdb8af751d6fa40ec34b39a1ab469acd6e289b7 AS uv
 
-FROM registry.access.redhat.com/ubi9/python-312:1@sha256:19e1e927138b40454858f297884c2c4e2f13f5ba95b3f55faea174d3cbb57067 AS backend
+FROM 192.168.56.111:5000/ubi9/python-312:1@sha256:19e1e927138b40454858f297884c2c4e2f13f5ba95b3f55faea174d3cbb57067 AS backend
+USER 0
+RUN dnf remove -y nodejs nodejs-docs nodejs-full-i18n nodejs-libs npm && dnf clean all
+USER 1001
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /opt/app-root/src
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \
@@ -15,7 +18,7 @@ USER 1001
 ENTRYPOINT ["/opt/app-root/src/.venv/bin/python"]
 CMD ["-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "30"]
 
-FROM nginxinc/nginx-unprivileged:alpine AS nginx
+FROM 192.168.56.111:5000/nginxinc/nginx-unprivileged:1.29.3-alpine@sha256:5aea7cc516b419e3526f47dd1531be31a56a046cfe44754d94f9383e13e2ee99 AS nginx
 USER root
 RUN apk upgrade --no-cache
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf

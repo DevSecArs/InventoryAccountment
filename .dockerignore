@@ -1,6 +1,11 @@
 # Контекст содержит только исходники, необходимые Dockerfile.
 **
 !Dockerfile
+!docker/
+!docker/gosu/
+!docker/gosu/*.go
+!docker/gosu/go.mod
+!docker/gosu/go.sum
 !nginx/
 !nginx/default.conf
 !backend/

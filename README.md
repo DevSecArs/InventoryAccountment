@@ -131,6 +131,119 @@ PostgreSQL в существующем томе; смену пароля вып�
 Для CI используйте GitHub Actions Secrets и минимальные права штатного
 `GITHUB_TOKEN`; не передавайте секреты через build args или Docker ENV.
 
+## Локальный Docker Registry
+
+Для локальных сборок используется Docker Registry по адресу
+`192.168.56.111:5000` в host-only сети VirtualBox.
+
+Registry работает по HTTP без TLS и аутентификации. Он предназначен
+только для доверенной локальной сети и не должен публиковаться в интернет.
+
+### Настройка Docker Engine
+
+На Ubuntu VM в `/etc/docker/daemon.json` должен присутствовать параметр:
+
+```json
+{
+  "insecure-registries": ["192.168.56.111:5000"]
+}
+```
+
+Сохраняйте остальные существующие параметры Docker Engine.
+
+В Windows Docker Desktop тот же адрес добавляется через
+Settings → Docker Engine. После изменения настроек перезапустите
+соответствующий Docker Engine.
+
+### Запуск Registry
+
+Из корня проекта:
+
+```bash
+docker compose -f docker-compose.registry.yml up -d
+curl -f http://192.168.56.111:5000/v2/
+```
+
+Успешный ответ Registry: `{}`.
+
+Данные хранятся в Docker-томе `registry_data`.
+Не удаляйте этот том при очистке Docker.
+Контейнер настроен на автоматический перезапуск (`unless-stopped`).
+
+Для первоначального запуска образ `registry:2.8.3` должен быть
+заранее доступен локально или загружен из внешнего Registry.
+
+### Образы и SHA256
+
+Dockerfile, Compose и security-скрипты используют локальный Registry
+с закреплёнными SHA256. Изменение одного тега без обновления digest
+не меняет фактически используемый образ.
+
+Перед сборкой приложения необходимые образы должны находиться
+в локальном Registry.
+
+### Исправленный PostgreSQL
+
+Используется PostgreSQL 17.11 с заменённым `gosu 1.20`,
+собранным с Go 1.27.3 и `golang.org/x/sys v0.44.0`.
+
+Исходники и инструкции сборки находятся в:
+
+- `docker/gosu/`
+- `docker/postgres/Dockerfile`
+
+Сборка:
+
+```bash
+docker build -f docker/postgres/Dockerfile -t inventory-postgres-reproducible:local .
+```
+
+Исходные образы PostgreSQL и Go берутся из локального Registry.
+При отсутствии кеша Go-модулей требуется доступ к внешнему
+источнику зависимостей. Полностью автономная сборка пока
+не гарантируется.
+
+Исправленный PostgreSQL загружен в локальный Registry:
+
+`192.168.56.111:5000/inventory/postgres:17.11-gosu1.20`
+
+Его закреплённый digest:
+
+`sha256:beda889504259e25f6a148e9460de62ade9072d48a48c31483a3c9d80e6aa0e4`
+
+### Проверки
+
+Из корня проекта:
+
+```bash
+make test
+make quality
+make security
+sh scripts/security.sh dependencies
+sh scripts/security.sh ci
+make container-check
+```
+
+`make security` проверяет историю и исходники через Gitleaks.
+Режим `dependencies` выполняет pip-audit.
+Режим `ci` выполняет pip-audit и сканирование образов
+backend, db и nginx через Trivy.
+
+Отчёты сохраняются в каталоге `reports/`.
+Для Trivy требуется достаточное свободное место на диске.
+
+Тесты используют изолированную PostgreSQL и не должны
+подключаться к рабочей базе данных.
+
+### Ограничения
+
+Локальный Registry не заменяет публикацию в GHCR через GitHub Actions.
+Файл `.github/workflows/ci.yml` в рамках локальной настройки
+не изменяется.
+
+Registry работает по HTTP, поэтому доступ к порту 5000
+должен быть ограничен доверенной сетью.
+
 ## Управление и диагностика
 
 Backend устанавливается и запускается в одной стадии Red Hat UBI9 Python 3.12.
