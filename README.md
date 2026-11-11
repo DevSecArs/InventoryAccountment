@@ -262,7 +262,7 @@ docker build -f docker/postgres/Dockerfile -t inventory-postgres-reproducible:lo
 
 Его закреплённый digest:
 
-`sha256:beda889504259e25f6a148e9460de62ade9072d48a48c31483a3c9d80e6aa0e4`
+`sha256:6e831ad1c986ba39e25acc4c510993792be68fd60d331ebe644b3083eeaa6201`
 
 Проверьте его наличие по digest до запуска проверок. Приведённая выше сборка
 создаёт локальный образ и сама по себе не публикует его. Сборка и публикация
