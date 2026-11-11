@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-if (( EUID != 0 )); then
-  echo "Развёртывание требует root" >&2
+if [[ "$(id -un)" != "gha-runner" ]]; then
+  echo "Развёртывание требует пользователя gha-runner" >&2
   exit 1
 fi
 
@@ -13,14 +13,17 @@ if (( $# != 3 )); then
 fi
 
 registry="192.168.56.111:5000/inventory"
-compose="/opt/inventory-staging/docker-compose.yml"
-config="/etc/inventory-staging/staging.env"
-images="/etc/inventory-staging/images.env"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+compose="$script_dir/docker-compose.staging.yml"
+state_dir="/opt/actions-runner/staging"
+config="$state_dir/staging.env"
+images="$state_dir/images.env"
 
 validate_image() {
-  local service="$1" reference="$2"
-  local pattern="^${registry}/${service}@sha256:[0-9a-f]{64}$"
-  if [[ ! "$reference" =~ $pattern ]]; then
+  local service="$1" reference="$2" prefix digest
+  prefix="${registry}/${service}@sha256:"
+  digest="${reference#"$prefix"}"
+  if [[ "$reference" != "$prefix"* || ! "$digest" =~ ^[0-9a-f]{64}$ ]]; then
     echo "Недопустимая ссылка на образ: ${service}" >&2
     exit 1
   fi
@@ -37,15 +40,14 @@ for reference in "$1" "$2" "$3"; do
   docker pull "$reference"
 done
 
-tmp="$(mktemp /etc/inventory-staging/images.env.XXXXXX)"
+tmp="$(mktemp "$state_dir/images.env.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 
 printf 'STAGING_BACKEND_IMAGE=%s\n' "$1" > "$tmp"
 printf 'STAGING_FRONTEND_IMAGE=%s\n' "$2" >> "$tmp"
 printf 'STAGING_DB_IMAGE=%s\n' "$3" >> "$tmp"
 
-chown root:deploy "$tmp"
-chmod 640 "$tmp"
+chmod 600 "$tmp"
 
 docker compose \
   --env-file "$config" \

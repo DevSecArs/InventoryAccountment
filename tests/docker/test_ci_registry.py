@@ -47,6 +47,14 @@ class RegistryWorkflowTests(unittest.TestCase):
         self.assertNotIn("ghcr.io", self.publish)
         self.assertIn("published/$service-image.txt", self.publish)
 
+    def test_staging_uses_checkout_without_system_deploy_account(self) -> None:
+        staging = self.workflow.split("\n  deploy-staging:\n", 1)[1]
+        self.assertIn("uses: actions/checkout@v4", staging)
+        self.assertIn("bash deploy/staging-request.sh", staging)
+        self.assertNotIn("sudo -n -u deploy", staging)
+        self.assertIn('test "${#replicas[@]}" -eq 2', staging)
+        self.assertIn("http://127.0.0.1:8081/version", staging)
+
 
 if __name__ == "__main__":
     unittest.main()

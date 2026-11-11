@@ -363,6 +363,9 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Checkout staging configuration
+        uses: actions/checkout@v4
+
       - name: Download published image digests
         uses: actions/download-artifact@v4
         with:
@@ -400,8 +403,7 @@ jobs:
           frontend="$(read_image nginx frontend)"
           db="$(read_image db db)"
 
-          sudo -n -u deploy \
-            /usr/local/bin/inventory-staging-request \
+          bash deploy/staging-request.sh \
             "$backend" "$frontend" "$db"
 
       - name: Verify staging response
@@ -413,7 +415,7 @@ jobs:
           mapfile -t replicas < <(docker ps -q --filter label=com.docker.compose.project=inventory-staging --filter label=com.docker.compose.service=backend)
           test "${#replicas[@]}" -eq 2
           for replica in "${replicas[@]}"; do
-            docker exec -e EXPECTED_SHA="$GITHUB_SHA" "$replica" /opt/app-root/src/.venv/bin/python -c 'import json, os, urllib.request; assert json.load(urllib.request.urlopen("http://127.0.0.1:8000/version", timeout=5))["sha"] == os.environ["EXPECTED_SHA"]'
+            docker exec -e EXPECTED_SHA="$GITHUB_SHA" "$replica" /opt/app-root/src/.venv/bin/python -c 'import json, os, sys, urllib.request; sys.exit(0 if json.load(urllib.request.urlopen("http://127.0.0.1:8000/version", timeout=5))["sha"] == os.environ["EXPECTED_SHA"] else 1)'
           done
-          curl --fail --silent --show-error http://127.0.0.1:8081/version | python3 -c 'import json, os, sys; assert json.load(sys.stdin)["sha"] == os.environ["GITHUB_SHA"]'
+          curl --fail --silent --show-error http://127.0.0.1:8081/version | python3 -c 'import json, os, sys; sys.exit(0 if json.load(sys.stdin)["sha"] == os.environ["GITHUB_SHA"] else 1)'
           echo "Staging release verified"
