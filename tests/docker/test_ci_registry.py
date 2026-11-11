@@ -21,7 +21,7 @@ class RegistryWorkflowTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", self.trigger)
         self.assertEqual(re.findall(r"(?m)^      - (.+)$", self.trigger), ["dev", "main"])
         jobs = re.split(r"(?m)^  [a-z][a-z_-]*:\n", self.workflow.split("\njobs:\n", 1)[1])[1:]
-        self.assertEqual(len(jobs), 9)
+        self.assertEqual(len(jobs), 10)
         for job in jobs:
             self.assertIn("runs-on: [self-hosted, linux, x64, inventory-registry]", job)
             self.assertTrue(

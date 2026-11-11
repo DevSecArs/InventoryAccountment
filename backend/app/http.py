@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import socket
 from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import asynccontextmanager
@@ -105,6 +106,10 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+
+    @application.get("/version")
+    def version() -> dict[str, str]:
+        return {"sha": os.environ.get("BUILD_GIT_SHA", "unknown")}
 
     @application.middleware("http")
     async def response_headers_middleware(request: Request, call_next: Any) -> Any:

@@ -208,7 +208,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts
           for service in backend nginx; do
-            docker build --pull --target "$service" -t "inventory-$service:ci-$GITHUB_RUN_ID" .
+            docker build --pull --build-arg "GIT_SHA=$GITHUB_SHA" --target "$service" -t "inventory-$service:ci-$GITHUB_RUN_ID" .
           done
           db_image=$(docker compose --env-file /dev/null config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["db"]["image"])')
           docker pull "$db_image"
@@ -410,4 +410,10 @@ jobs:
           set -euo pipefail
           curl --fail --silent --show-error \
             http://127.0.0.1:8081/health/ready
+          mapfile -t replicas < <(docker ps -q --filter label=com.docker.compose.project=inventory-staging --filter label=com.docker.compose.service=backend)
+          test "${#replicas[@]}" -eq 2
+          for replica in "${replicas[@]}"; do
+            docker exec -e EXPECTED_SHA="$GITHUB_SHA" "$replica" /opt/app-root/src/.venv/bin/python -c 'import json, os, urllib.request; assert json.load(urllib.request.urlopen("http://127.0.0.1:8000/version", timeout=5))["sha"] == os.environ["EXPECTED_SHA"]'
+          done
+          curl --fail --silent --show-error http://127.0.0.1:8081/version | python3 -c 'import json, os, sys; assert json.load(sys.stdin)["sha"] == os.environ["GITHUB_SHA"]'
           echo "Staging release verified"

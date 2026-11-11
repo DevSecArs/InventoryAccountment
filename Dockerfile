@@ -1,6 +1,8 @@
 FROM 192.168.56.111:5000/astral-sh/uv:0.9.5@sha256:f459f6f73a8c4ef5d69f4e6fbbdb8af751d6fa40ec34b39a1ab469acd6e289b7 AS uv
 
 FROM 192.168.56.111:5000/ubi9/python-312:1@sha256:19e1e927138b40454858f297884c2c4e2f13f5ba95b3f55faea174d3cbb57067 AS backend
+ARG GIT_SHA=unknown
+ENV BUILD_GIT_SHA=${GIT_SHA}
 USER 0
 RUN dnf remove -y nodejs nodejs-docs nodejs-full-i18n nodejs-libs npm && dnf clean all
 USER 1001
