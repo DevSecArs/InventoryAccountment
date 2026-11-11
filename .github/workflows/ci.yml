@@ -353,3 +353,61 @@ jobs:
           path: published/
           if-no-files-found: warn
           retention-days: 14
+
+  deploy-staging:
+    name: Deploy verified release to staging
+    needs: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: [self-hosted, linux, x64, inventory-registry]
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Download published image digests
+        uses: actions/download-artifact@v4
+        with:
+          name: published-images-${{ github.run_id }}-${{ github.run_attempt }}
+          path: published
+
+      - name: Deploy published images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          read_image() {
+            local file="$1"
+            local repository="$2"
+            local reference prefix digest
+
+            reference="$(cat "published/${file}-image.txt")"
+            prefix="192.168.56.111:5000/inventory/${repository}@sha256:"
+
+            [[ "$reference" == "$prefix"* ]] || {
+              echo "Unexpected image repository: $file" >&2
+              return 1
+            }
+
+            digest="${reference#"$prefix"}"
+            [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || {
+              echo "Invalid image digest: $file" >&2
+              return 1
+            }
+
+            printf '%s' "$reference"
+          }
+
+          backend="$(read_image backend backend)"
+          frontend="$(read_image nginx frontend)"
+          db="$(read_image db db)"
+
+          sudo -n -u deploy \
+            /usr/local/bin/inventory-staging-request \
+            "$backend" "$frontend" "$db"
+
+      - name: Verify staging response
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            http://127.0.0.1:8081/health/ready
+          echo "Staging release verified"

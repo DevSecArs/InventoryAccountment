@@ -1,0 +1,71 @@
+name: inventory-staging
+
+services:
+  db:
+    image: ${STAGING_DB_IMAGE:?STAGING_DB_IMAGE is required}
+    pull_policy: always
+    user: postgres
+    cpus: 0.5
+    mem_limit: 384m
+    pids_limit: 100
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-inventory_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-inventory}
+    volumes:
+      - staging_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  backend:
+    image: ${STAGING_BACKEND_IMAGE:?STAGING_BACKEND_IMAGE is required}
+    pull_policy: always
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 100
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: ${POSTGRES_USER:-inventory_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-inventory}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - /opt/app-root/src/.venv/bin/python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  nginx:
+    image: ${STAGING_FRONTEND_IMAGE:?STAGING_FRONTEND_IMAGE is required}
+    pull_policy: always
+    user: "101:101"
+    cpus: 0.25
+    mem_limit: 128m
+    pids_limit: 100
+    ports:
+      - "127.0.0.1:8081:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/health/live]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  staging_postgres_data:
