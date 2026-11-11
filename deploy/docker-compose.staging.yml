@@ -23,6 +23,8 @@ services:
 
   backend:
     image: ${STAGING_BACKEND_IMAGE:?STAGING_BACKEND_IMAGE is required}
+    deploy:
+      replicas: 2
     pull_policy: always
     cpus: 0.5
     mem_limit: 256m
