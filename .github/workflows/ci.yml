@@ -198,15 +198,22 @@ jobs:
     name: Build Docker images
     runs-on: [self-hosted, linux, x64, inventory-registry]
     timeout-minutes: 30
+    outputs:
+      backend_digest: ${{ steps.candidates.outputs.backend_digest }}
+      backend_id: ${{ steps.candidates.outputs.backend_id }}
+      nginx_digest: ${{ steps.candidates.outputs.nginx_digest }}
+      nginx_id: ${{ steps.candidates.outputs.nginx_id }}
+      db_digest: ${{ steps.candidates.outputs.db_digest }}
+      db_id: ${{ steps.candidates.outputs.db_id }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build and export images
+      - name: Build and publish candidates
+        id: candidates
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p artifacts
           for service in backend nginx; do
             docker build --pull --build-arg "GIT_SHA=$GITHUB_SHA" --target "$service" -t "inventory-$service:ci-$GITHUB_RUN_ID" .
           done
@@ -214,17 +221,21 @@ jobs:
           docker pull "$db_image"
           docker tag "$db_image" "inventory-db:ci-$GITHUB_RUN_ID"
           for service in backend nginx db; do
-            docker image inspect "inventory-$service:ci-$GITHUB_RUN_ID" --format '{{.Id}} {{json .RepoDigests}}' > "artifacts/$service-image.txt"
-            docker save "inventory-$service:ci-$GITHUB_RUN_ID" | gzip > "artifacts/$service.tar.gz"
+            destination=$service
+            if [ "$service" = nginx ]; then destination=frontend; fi
+            source="inventory-$service:ci-$GITHUB_RUN_ID"
+            candidate="192.168.56.111:5000/inventory/$destination:candidate-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            image_id=$(docker image inspect "$source" --format '{{.Id}}')
+            docker tag "$source" "$candidate"
+            docker push "$candidate" | tee "${RUNNER_TEMP}/candidate-$service-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.log"
+            digest=$(sed -nE 's/.*digest: (sha256:[0-9a-f]{64}).*/\1/p' "${RUNNER_TEMP}/candidate-$service-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.log" | tail -n 1)
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            reference="${candidate%:*}@$digest"
+            docker pull "$reference"
+            test "$(docker image inspect "$reference" --format '{{.Id}}')" = "$image_id"
+            echo "${service}_digest=$digest" >> "$GITHUB_OUTPUT"
+            echo "${service}_id=$image_id" >> "$GITHUB_OUTPUT"
           done
-
-      - name: Upload images
-        uses: actions/upload-artifact@v4
-        with:
-          name: images-${{ github.sha }}
-          path: artifacts/
-          if-no-files-found: error
-          retention-days: 14
 
   image_scan:
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'))
@@ -239,29 +250,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download images
-        uses: actions/download-artifact@v4
-        with:
-          name: images-${{ github.sha }}
-          path: artifacts
-
-      - name: Load image and verify identity
+      - name: Pull candidate and verify identity
+        id: candidate
         shell: bash
         env:
           SERVICE: ${{ matrix.service }}
+          DIGEST: ${{ needs.build.outputs[format('{0}_digest', matrix.service)] }}
+          EXPECTED_ID: ${{ needs.build.outputs[format('{0}_id', matrix.service)] }}
         run: |
           set -euo pipefail
-          gzip -dc "artifacts/$SERVICE.tar.gz" | docker load
-          expected=$(cut -d ' ' -f 1 "artifacts/$SERVICE-image.txt")
-          actual=$(docker image inspect "inventory-$SERVICE:ci-$GITHUB_RUN_ID" --format '{{.Id}}')
-          test "$actual" = "$expected"
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$EXPECTED_ID" =~ ^sha256:[0-9a-f]{64}$ ]]
+          destination=$SERVICE
+          if [ "$SERVICE" = nginx ]; then destination=frontend; fi
+          reference="192.168.56.111:5000/inventory/$destination@$DIGEST"
+          docker pull "$reference"
+          test "$(docker image inspect "$reference" --format '{{.Id}}')" = "$EXPECTED_ID"
+          echo "reference=$reference" >> "$GITHUB_OUTPUT"
 
       - name: Scan image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           version: v0.70.0
           scan-type: image
-          image-ref: inventory-${{ matrix.service }}:ci-${{ github.run_id }}
+          image-ref: ${{ steps.candidate.outputs.reference }}
           scanners: vuln
           format: json
           output: trivy-${{ matrix.service }}.json
@@ -288,7 +300,6 @@ jobs:
           name: trivy-${{ matrix.service }}-${{ github.sha }}
           path: |
             trivy-${{ matrix.service }}.json
-            artifacts/${{ matrix.service }}-image.txt
           if-no-files-found: warn
           retention-days: 14
 
@@ -308,41 +319,36 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Download verified images
-        uses: actions/download-artifact@v4
-        with:
-          name: images-${{ github.sha }}
-          path: artifacts
-
-      - name: Load verified images
+      - name: Promote verified candidates
         shell: bash
-        run: |
-          set -euo pipefail
-          for service in backend nginx db; do
-            gzip -dc "artifacts/$service.tar.gz" | docker load
-            expected=$(cut -d ' ' -f 1 "artifacts/$service-image.txt")
-            actual=$(docker image inspect "inventory-$service:ci-$GITHUB_RUN_ID" --format '{{.Id}}')
-            test "$actual" = "$expected"
-          done
-
-      - name: Publish verified images
-        shell: bash
+        env:
+          BACKEND_DIGEST: ${{ needs.build.outputs.backend_digest }}
+          NGINX_DIGEST: ${{ needs.build.outputs.nginx_digest }}
+          DB_DIGEST: ${{ needs.build.outputs.db_digest }}
+          BACKEND_ID: ${{ needs.build.outputs.backend_id }}
+          NGINX_ID: ${{ needs.build.outputs.nginx_id }}
+          DB_ID: ${{ needs.build.outputs.db_id }}
         run: |
           set -euo pipefail
           mkdir -p published
           for service in backend nginx db; do
-            destination=$service
-            if [ "$service" = nginx ]; then destination=frontend; fi
-            image="192.168.56.111:5000/inventory/$destination:$GITHUB_SHA"
-            source="inventory-$service:ci-$GITHUB_RUN_ID"
-            expected=$(cut -d ' ' -f 1 "artifacts/$service-image.txt")
-            test "$(docker image inspect "$source" --format '{{.Id}}')" = "$expected"
-            docker tag "$source" "$image"
-            test "$(docker image inspect "$image" --format '{{.Id}}')" = "$expected"
-            docker push "$image" | tee "published/$service-push.log"
-            digest=$(sed -nE 's/.*digest: (sha256:[0-9a-f]{64}).*/\1/p' "published/$service-push.log" | tail -n 1)
+            case "$service" in
+              backend) digest=$BACKEND_DIGEST; expected_id=$BACKEND_ID; destination=backend ;;
+              nginx) digest=$NGINX_DIGEST; expected_id=$NGINX_ID; destination=frontend ;;
+              db) digest=$DB_DIGEST; expected_id=$DB_ID; destination=db ;;
+            esac
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-            printf '%s@%s\n' "${image%:*}" "$digest" > "published/$service-image.txt"
+            [[ "$expected_id" =~ ^sha256:[0-9a-f]{64}$ ]]
+            repository="192.168.56.111:5000/inventory/$destination"
+            docker pull "$repository@$digest"
+            test "$(docker image inspect "$repository@$digest" --format '{{.Id}}')" = "$expected_id"
+            skopeo copy --all --preserve-digests --src-tls-verify=false --dest-tls-verify=false \
+              --digestfile "published/$service.digest" \
+              "docker://$repository@$digest" "docker://$repository:$GITHUB_SHA"
+            test "$(cat "published/$service.digest")" = "$digest"
+            actual=$(skopeo inspect --tls-verify=false --raw "docker://$repository:$GITHUB_SHA" | sha256sum | cut -d ' ' -f 1)
+            test "sha256:$actual" = "$digest"
+            printf '%s@%s\n' "$repository" "$digest" > "published/$service-image.txt"
           done
 
       - name: Upload published image digests

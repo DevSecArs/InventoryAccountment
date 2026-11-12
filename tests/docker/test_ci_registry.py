@@ -36,13 +36,12 @@ class RegistryWorkflowTests(unittest.TestCase):
             with self.subTest(job=job):
                 self.assertRegex(needs, rf"(?m)^      - {re.escape(job)}$")
 
-    def test_publish_uses_verified_artifacts_for_all_images(self) -> None:
+    def test_publish_uses_verified_candidates_for_all_images(self) -> None:
         self.assertIn("for service in backend nginx db; do", self.publish)
-        self.assertIn("actions/download-artifact@v4", self.publish)
-        self.assertIn("artifacts/$service-image.txt", self.publish)
-        self.assertIn('test "$actual" = "$expected"', self.publish)
-        self.assertIn('destination=frontend', self.publish)
-        self.assertIn('192.168.56.111:5000/inventory/$destination:$GITHUB_SHA', self.publish)
+        self.assertIn("needs.build.outputs.backend_digest", self.publish)
+        self.assertIn("--all --preserve-digests", self.publish)
+        self.assertIn('test "$(cat "published/$service.digest")" = "$digest"', self.publish)
+        self.assertIn('test "sha256:$actual" = "$digest"', self.publish)
         self.assertNotIn("docker build", self.publish)
         self.assertNotIn("ghcr.io", self.publish)
         self.assertIn("published/$service-image.txt", self.publish)
@@ -54,6 +53,16 @@ class RegistryWorkflowTests(unittest.TestCase):
         self.assertNotIn("sudo -n -u deploy", staging)
         self.assertIn('test "${#replicas[@]}" -eq 2', staging)
         self.assertIn("http://127.0.0.1:8081/version", staging)
+
+    def test_candidates_are_scanned_by_digest_and_image_id(self) -> None:
+        build = self.workflow.split("\n  build:\n", 1)[1].split("\n  image_scan:\n", 1)[0]
+        scan = self.workflow.split("\n  image_scan:\n", 1)[1].split("\n  publish:\n", 1)[0]
+        self.assertIn("candidate-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT", build)
+        self.assertIn('docker pull "$reference"', scan)
+        self.assertIn('= "$EXPECTED_ID"', scan)
+        self.assertIn("image-ref: ${{ steps.candidate.outputs.reference }}", scan)
+        self.assertNotIn("docker save", build)
+        self.assertNotIn("actions/download-artifact@v4", scan)
 
 
 if __name__ == "__main__":
