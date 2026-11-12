@@ -5,7 +5,7 @@ services:
     cpus: 0.75
     mem_limit: 384m
     pids_limit: 100
-    image: 192.168.56.111:5000/inventory/postgres:17.11-gosu1.20@sha256:6e831ad1c986ba39e25acc4c510993792be68fd60d331ebe644b3083eeaa6201
+    image: 192.168.56.111:5000/inventory/postgres:17.11-gosu1.20-go1.27.4@sha256:6e9287c3a626921c4bd8ca3ad6e8c462018cb0673037c67d19a86d1730ef7de1
     user: postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-inventory_app}
