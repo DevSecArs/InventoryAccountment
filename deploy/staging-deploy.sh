@@ -62,7 +62,7 @@ docker compose \
 
 curl --fail --silent --show-error \
   --retry 5 --retry-delay 2 \
-  http://127.0.0.1:8081/health/ready \
+  http://192.168.56.111:8081/health/ready \
   > /dev/null
 
 mv -f "$tmp" "$images"

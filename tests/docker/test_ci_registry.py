@@ -52,7 +52,7 @@ class RegistryWorkflowTests(unittest.TestCase):
         self.assertIn("bash deploy/staging-request.sh", staging)
         self.assertNotIn("sudo -n -u deploy", staging)
         self.assertIn('test "${#replicas[@]}" -eq 2', staging)
-        self.assertIn("http://127.0.0.1:8081/version", staging)
+        self.assertIn("http://192.168.56.111:8081/version", staging)
 
     def test_candidates_are_scanned_by_digest_and_image_id(self) -> None:
         build = self.workflow.split("\n  build:\n", 1)[1].split("\n  image_scan:\n", 1)[0]
