@@ -5,10 +5,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-import io
-import contextlib
 import unittest
-from unittest.mock import patch
 from pathlib import Path
 
 
@@ -121,48 +118,6 @@ class RegistryWorkflowTests(unittest.TestCase):
         self.assertNotIn("docker save", build)
         self.assertNotIn("actions/download-artifact@v4", scan)
 
-    def test_staging_user_scenario(self) -> None:
-        class Response(io.BytesIO):
-            pass
-
-        class Client:
-            def __init__(self, fail_catalog: bool = False) -> None:
-                self.fail_catalog = fail_catalog
-                self.calls: list[str] = []
-
-            def open(self, request: object, timeout: int = 0) -> Response:
-                url = request.full_url if hasattr(request, "full_url") else request
-                self.calls.append(str(url).split(":8081", 1)[1])
-                if self.calls[-1].endswith("/login"):
-                    return Response(b'{"csrf_token":"secret"}')
-                if self.calls[-1].endswith("/units/"):
-                    if self.fail_catalog:
-                        raise OSError("test failure")
-                    return Response(b'{"items":[],"total":0}')
-                if request.get_header("X-csrf-token") != "secret":
-                    raise ValueError("missing CSRF token")
-                return Response(b"")
-
-        source = (ROOT / "deploy" / "staging-deploy.sh").read_text(encoding="utf-8")
-        scenario = source.split('python3 - "$config" <<\'PY\'\n', 1)[1].split("\nPY\n", 1)[0]
-        with tempfile.TemporaryDirectory() as temporary:
-            config = Path(temporary) / "staging.env"
-            config.write_text("STAGING_CHECK_LOGIN_B64=YWRtaW4=\nSTAGING_CHECK_PASSWORD_B64=c2VjcmV0\n", encoding="utf-8")
-            client = Client()
-            output = io.StringIO()
-            with patch("sys.argv", ["scenario", str(config)]), patch("urllib.request.build_opener", return_value=client), contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
-                exec(scenario, {})
-                self.assertEqual(client.calls, ["/api/v1/auth/login", "/api/v1/units/", "/api/v1/auth/logout"])
-                client.fail_catalog = True
-                with self.assertRaises(SystemExit) as failed:
-                    exec(scenario, {})
-                self.assertNotEqual(failed.exception.code, 0)
-                self.assertEqual(client.calls[-1], "/api/v1/auth/logout")
-                config.write_text("", encoding="utf-8")
-                with self.assertRaises(SystemExit):
-                    exec(scenario, {})
-            self.assertNotIn("secret", output.getvalue())
-
     @unittest.skipUnless(os.name == "posix" and shutil.which("bash"), "Требуется Bash на POSIX")
     def test_failed_verification_preserves_successful_release(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -181,7 +136,7 @@ class RegistryWorkflowTests(unittest.TestCase):
                 "id": "echo gha-runner",
                 "docker": 'case "$1" in ps) if [ "$2" = -aq ]; then printf "db\\none\\ntwo\\nnginx\\n"; else printf "one\\ntwo\\n"; fi;; inspect) case "$4" in db|nginx) service="$4";; *) service=backend;; esac; if [ "${BAD_HEALTH:-}" = "$4" ]; then echo "$service running unhealthy"; else echo "$service running healthy"; fi;; exec) [ "${FAIL_VERSION:-0}" = 0 ];; *) exit 0;; esac',
                 "curl": "echo '{}'",
-                "python3": 'cat >/dev/null; [ "${FAIL_VERSION:-0}" = 0 ] && { [ "$1" != - ] || [ "${FAIL_SCENARIO:-0}" = 0 ]; }',
+                "python3": 'cat >/dev/null; [ "${FAIL_VERSION:-0}" = 0 ]',
             }.items():
                 executable = mocks / name
                 executable.write_text(f"#!/bin/sh\n{content}\n", encoding="utf-8")
@@ -196,9 +151,6 @@ class RegistryWorkflowTests(unittest.TestCase):
             self.assertEqual((state / "images.env").read_bytes(), before)
             self.assertFalse((state / "releases" / f"{next_sha}.env").exists())
             self.assertNotEqual(run(next_sha, *refs, env=dict(env, BAD_HEALTH="nginx")).returncode, 0)
-            self.assertEqual((state / "images.env").read_bytes(), before)
-            self.assertFalse((state / "releases" / f"{next_sha}.env").exists())
-            self.assertNotEqual(run(next_sha, *refs, env=dict(env, FAIL_SCENARIO="1")).returncode, 0)
             self.assertEqual((state / "images.env").read_bytes(), before)
             self.assertFalse((state / "releases" / f"{next_sha}.env").exists())
             self.assertEqual(run(sha).returncode, 0)

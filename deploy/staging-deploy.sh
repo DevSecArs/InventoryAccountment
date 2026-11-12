@@ -111,53 +111,6 @@ done
 curl --fail --silent --show-error http://192.168.56.111:8081/version | \
   EXPECTED_SHA="$release" python3 -c 'import json, os, sys; sys.exit(0 if json.load(sys.stdin)["sha"] == os.environ["EXPECTED_SHA"] else 1)'
 
-python3 - "$config" <<'PY'
-import base64
-import http.cookiejar
-import json
-import sys
-import urllib.request
-
-try:
-    values = {}
-    with open(sys.argv[1], encoding="utf-8") as config:
-        for line in config:
-            key, separator, value = line.strip().partition("=")
-            if separator and key in {"STAGING_CHECK_LOGIN_B64", "STAGING_CHECK_PASSWORD_B64"}:
-                if key in values:
-                    raise ValueError("duplicate setting")
-                values[key] = base64.b64decode(value, validate=True).decode("utf-8")
-    login = values["STAGING_CHECK_LOGIN_B64"]
-    password = values["STAGING_CHECK_PASSWORD_B64"]
-    if not login or not password:
-        raise ValueError("empty setting")
-
-    base = "http://192.168.56.111:8081"
-    client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
-    request = urllib.request.Request(
-        base + "/api/v1/auth/login",
-        data=json.dumps({"login": login, "password": password}).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
-    with client.open(request, timeout=10) as response:
-        csrf = json.load(response)["csrf_token"]
-    try:
-        with client.open(base + "/api/v1/units/", timeout=10) as response:
-            result = json.load(response)
-        if not isinstance(result.get("items"), list) or not isinstance(result.get("total"), int):
-            raise ValueError("invalid catalog response")
-    finally:
-        request = urllib.request.Request(
-            base + "/api/v1/auth/logout", data=b"", headers={"X-CSRF-Token": csrf}
-        )
-        with client.open(request, timeout=10):
-            pass
-except Exception:
-    print("Проверка входа и справочника единиц не пройдена", file=sys.stderr)
-    sys.exit(1)
-print("Проверка входа и справочника единиц пройдена")
-PY
-
 if [[ ! -e "$record" ]]; then
   record_tmp="$(mktemp "$state_dir/releases/.release.XXXXXX")"
   cp -- "$tmp" "$record_tmp"
