@@ -18,6 +18,10 @@ compose="$script_dir/docker-compose.staging.yml"
 state_dir="/opt/actions-runner/staging"
 config="$state_dir/staging.env"
 images="$state_dir/images.env"
+exec 9>"$state_dir/deploy.lock"
+echo 'Ожидание блокировки staging'
+flock -x 9
+echo 'Блокировка staging получена'
 release=$1
 [[ "$release" =~ ^[0-9a-f]{40}$ ]] || { echo 'Некорректный SHA выпуска' >&2; exit 1; }
 record="$state_dir/releases/$release.env"

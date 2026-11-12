@@ -365,7 +365,7 @@ jobs:
     needs: publish
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
     runs-on: [self-hosted, linux, x64, inventory-registry]
-    timeout-minutes: 15
+    timeout-minutes: 360
     permissions:
       contents: read
     steps:

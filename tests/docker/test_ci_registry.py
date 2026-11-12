@@ -56,9 +56,57 @@ class RegistryWorkflowTests(unittest.TestCase):
         self.assertIn("bash deploy/staging-request.sh", staging)
         self.assertNotIn("sudo -n -u deploy", staging)
         self.assertIn('"$GITHUB_SHA" "$backend" "$frontend" "$db"', staging)
+        self.assertIn("timeout-minutes: 360", staging)
+        self.assertNotRegex(self.workflow, r"(?m)^\s*concurrency:")
         deploy = (ROOT / "deploy" / "staging-deploy.sh").read_text(encoding="utf-8")
         self.assertIn('(( ${#replicas[@]} == 2 ))', deploy)
         self.assertIn("http://192.168.56.111:8081/version", deploy)
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("bash") and shutil.which("flock"), "Требуются Bash и flock на POSIX")
+    def test_staging_waits_for_existing_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state = root / "state"
+            state.mkdir()
+            (state / "staging.env").write_text("", encoding="utf-8")
+            (root / "docker-compose.staging.yml").write_text("", encoding="utf-8")
+            source = (ROOT / "deploy" / "staging-deploy.sh").read_text(encoding="utf-8")
+            script = root / "staging-deploy.sh"
+            script.write_text(source.replace('state_dir="/opt/actions-runner/staging"', f'state_dir="{state}"'), encoding="utf-8")
+            mocks = root / "bin"
+            mocks.mkdir()
+            for name, content in {"id": "echo gha-runner", "docker": f'touch "{root / "docker-called"}"; exit 47'}.items():
+                executable = mocks / name
+                executable.write_text(f"#!/bin/sh\n{content}\n", encoding="utf-8")
+                executable.chmod(0o755)
+            env = dict(os.environ, PATH=f"{mocks}{os.pathsep}{os.environ['PATH']}")
+            holder = subprocess.Popen(
+                ["bash", "-c", 'exec 9>"$1"; flock -x 9; echo locked; read -r', "bash", str(state / "deploy.lock")],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+            )
+            try:
+                self.assertEqual(holder.stdout.readline().strip(), "locked")
+                digest = "1" * 64
+                refs = [f"192.168.56.111:5000/inventory/{name}@sha256:{digest}" for name in ("backend", "frontend", "db")]
+                process = subprocess.Popen(["bash", str(script), "a" * 40, *refs], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                try:
+                    with self.assertRaises(subprocess.TimeoutExpired):
+                        process.wait(timeout=1)
+                    self.assertFalse((root / "docker-called").exists())
+                    holder.stdin.write("release\n")
+                    holder.stdin.flush()
+                    holder.wait(timeout=5)
+                    process.communicate(timeout=5)
+                    self.assertEqual(process.returncode, 47)
+                    self.assertTrue((root / "docker-called").exists())
+                finally:
+                    if process.poll() is None:
+                        process.kill()
+                        process.communicate()
+            finally:
+                if holder.poll() is None:
+                    holder.kill()
+                holder.communicate()
 
     def test_candidates_are_scanned_by_digest_and_image_id(self) -> None:
         build = self.workflow.split("\n  build:\n", 1)[1].split("\n  image_scan:\n", 1)[0]
