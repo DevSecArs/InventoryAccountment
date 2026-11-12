@@ -4,7 +4,8 @@ FROM 192.168.56.111:5000/ubi9/python-312:1@sha256:19e1e927138b40454858f297884c2c
 ARG GIT_SHA=unknown
 ENV BUILD_GIT_SHA=${GIT_SHA}
 USER 0
-RUN dnf remove -y nodejs nodejs-docs nodejs-full-i18n nodejs-libs npm && dnf clean all
+RUN dnf remove -y nodejs nodejs-docs nodejs-full-i18n nodejs-libs npm \
+    && dnf upgrade -y && dnf clean all
 USER 1001
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /opt/app-root/src

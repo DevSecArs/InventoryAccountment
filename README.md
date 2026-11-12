@@ -220,7 +220,7 @@ ghcr.io/astral-sh/uv@sha256:f459f6f73a8c4ef5d69f4e6fbbdb8af751d6fa40ec34b39a1ab4
 registry.access.redhat.com/ubi9/python-312@sha256:19e1e927138b40454858f297884c2c4e2f13f5ba95b3f55faea174d3cbb57067 ubi9/python-312:1
 docker.io/nginxinc/nginx-unprivileged@sha256:5aea7cc516b419e3526f47dd1531be31a56a046cfe44754d94f9383e13e2ee99 nginxinc/nginx-unprivileged:1.29.3-alpine
 docker.io/library/postgres@sha256:665dc7b37ac52a17e298511414c21d23ffa4e6a6ef6225b3e5d59c7afb35e994 library/postgres:17.11-bookworm
-docker.io/library/golang@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0 library/golang:1.27-bookworm
+docker.io/library/golang@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea library/golang:1.27.4-bookworm
 docker.io/library/python@sha256:f3fa41d74a768c2fce8016b98c191ae8c1bacd8f1152870a3f9f87d350920b7c library/python:3.12.12-slim
 docker.io/zricethezav/gitleaks@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4 zricethezav/gitleaks:v8.24.2
 docker.io/aquasec/trivy@sha256:029e990b328d149bf0a9ffe355919041e1f86192db2df47e217f8a36dd42ceac aquasec/trivy:0.59.1
@@ -244,8 +244,9 @@ composite action, устанавливающий исполняемый файл
 
 ### Исправленный PostgreSQL
 
-Используется PostgreSQL 17.11 с заменённым `gosu 1.20`,
-собранным с Go 1.27.3 и `golang.org/x/sys v0.44.0`.
+Рецепт производного PostgreSQL 17.11 собирает `gosu 1.20` с Go 1.27.4
+и `golang.org/x/sys v0.44.0`. Закреплённый ниже образ ещё нужно заменить после
+сборки, проверки и публикации новой версии; он собран с Go 1.27.3.
 
 Исходники и инструкции сборки находятся в:
 
