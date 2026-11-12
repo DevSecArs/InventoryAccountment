@@ -410,18 +410,4 @@ jobs:
           db="$(read_image db db)"
 
           bash deploy/staging-request.sh \
-            "$backend" "$frontend" "$db"
-
-      - name: Verify staging response
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error \
-            http://192.168.56.111:8081/health/ready
-          mapfile -t replicas < <(docker ps -q --filter label=com.docker.compose.project=inventory-staging --filter label=com.docker.compose.service=backend)
-          test "${#replicas[@]}" -eq 2
-          for replica in "${replicas[@]}"; do
-            docker exec -e EXPECTED_SHA="$GITHUB_SHA" "$replica" /opt/app-root/src/.venv/bin/python -c 'import json, os, sys, urllib.request; sys.exit(0 if json.load(urllib.request.urlopen("http://127.0.0.1:8000/version", timeout=5))["sha"] == os.environ["EXPECTED_SHA"] else 1)'
-          done
-          curl --fail --silent --show-error http://192.168.56.111:8081/version | python3 -c 'import json, os, sys; sys.exit(0 if json.load(sys.stdin)["sha"] == os.environ["GITHUB_SHA"] else 1)'
-          echo "Staging release verified"
+            "$GITHUB_SHA" "$backend" "$frontend" "$db"

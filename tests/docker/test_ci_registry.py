@@ -1,6 +1,10 @@
 """Проверки ограничений запуска и публикации workflow."""
 
 import re
+import os
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -51,8 +55,10 @@ class RegistryWorkflowTests(unittest.TestCase):
         self.assertIn("uses: actions/checkout@v4", staging)
         self.assertIn("bash deploy/staging-request.sh", staging)
         self.assertNotIn("sudo -n -u deploy", staging)
-        self.assertIn('test "${#replicas[@]}" -eq 2', staging)
-        self.assertIn("http://192.168.56.111:8081/version", staging)
+        self.assertIn('"$GITHUB_SHA" "$backend" "$frontend" "$db"', staging)
+        deploy = (ROOT / "deploy" / "staging-deploy.sh").read_text(encoding="utf-8")
+        self.assertIn('(( ${#replicas[@]} == 2 ))', deploy)
+        self.assertIn("http://192.168.56.111:8081/version", deploy)
 
     def test_candidates_are_scanned_by_digest_and_image_id(self) -> None:
         build = self.workflow.split("\n  build:\n", 1)[1].split("\n  image_scan:\n", 1)[0]
@@ -63,6 +69,41 @@ class RegistryWorkflowTests(unittest.TestCase):
         self.assertIn("image-ref: ${{ steps.candidate.outputs.reference }}", scan)
         self.assertNotIn("docker save", build)
         self.assertNotIn("actions/download-artifact@v4", scan)
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("bash"), "Требуется Bash на POSIX")
+    def test_failed_verification_preserves_successful_release(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state = root / "state"
+            state.mkdir()
+            (state / "staging.env").write_text("POSTGRES_PASSWORD=test\n", encoding="utf-8")
+            (root / "docker-compose.staging.yml").write_text("services: {}\n", encoding="utf-8")
+            source = (ROOT / "deploy" / "staging-deploy.sh").read_text(encoding="utf-8")
+            source = source.replace('state_dir="/opt/actions-runner/staging"', f'state_dir="{state}"')
+            script = root / "staging-deploy.sh"
+            script.write_text(source, encoding="utf-8")
+            mocks = root / "bin"
+            mocks.mkdir()
+            for name, content in {
+                "id": "echo gha-runner",
+                "docker": 'case "$1" in ps) printf "one\\ntwo\\n";; exec) [ "${FAIL_VERSION:-0}" = 0 ];; *) exit 0;; esac',
+                "curl": "echo '{}'",
+                "python3": 'cat >/dev/null; [ "${FAIL_VERSION:-0}" = 0 ]',
+            }.items():
+                executable = mocks / name
+                executable.write_text(f"#!/bin/sh\n{content}\n", encoding="utf-8")
+                executable.chmod(0o755)
+            env = dict(os.environ, PATH=f"{mocks}{os.pathsep}{os.environ['PATH']}")
+            sha, next_sha, digest = "a" * 40, "b" * 40, "1" * 64
+            refs = [f"192.168.56.111:5000/inventory/{name}@sha256:{digest}" for name in ("backend", "frontend", "db")]
+            run = lambda *args, env=env: subprocess.run(["bash", str(script), *args], env=env, capture_output=True, text=True, check=False)
+            self.assertEqual(run(sha, *refs).returncode, 0)
+            before = (state / "images.env").read_bytes()
+            self.assertNotEqual(run(next_sha, *refs, env=dict(env, FAIL_VERSION="1")).returncode, 0)
+            self.assertEqual((state / "images.env").read_bytes(), before)
+            self.assertFalse((state / "releases" / f"{next_sha}.env").exists())
+            self.assertEqual(run(sha).returncode, 0)
+            self.assertNotEqual(run(next_sha).returncode, 0)
 
 
 if __name__ == "__main__":
