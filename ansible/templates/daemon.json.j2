@@ -1,0 +1,2 @@
+{% set registries = (inventory_docker_settings.get('insecure-registries', []) + inventory_insecure_registries) | unique | list %}
+{{ inventory_docker_settings | combine({'insecure-registries': registries}) | to_nice_json }}

@@ -17,6 +17,7 @@
     - name: "Проверить обязательный секрет {{ inventory_postgres_password_env }}"
       ansible.builtin.assert:
         that:
-          - lookup('ansible.builtin.env', inventory_postgres_password_env) | trim | length > 0
+          - inventory_postgres_password_present
         quiet: true
+      when: inventory_check_postgres_password | default(true)
       no_log: true

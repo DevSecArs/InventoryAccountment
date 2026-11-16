@@ -1,0 +1,214 @@
+---
+- name: Проверить входные параметры
+  ansible.builtin.import_playbook: preflight.yml
+  vars:
+    # На подготовленном узле пароль остаётся в существующем .env.
+    inventory_check_postgres_password: false
+
+- name: Подготовить Ubuntu Server
+  hosts: all
+  gather_facts: false
+  vars:
+    # Для проверки открываем новую SSH-сессию, которая требует аутентификации по ключу.
+    ansible_connection: ssh
+    ansible_ssh_args: >-
+      -o ControlMaster=no -o ControlPath=none -o BatchMode=yes
+      -o PreferredAuthentications=publickey -o StrictHostKeyChecking=yes
+    inventory_ssh_source: "{{ lookup('ansible.builtin.env', 'INVENTORY_SSH_SOURCE') }}"
+    inventory_public_key: "{{ lookup('ansible.builtin.file', lookup('ansible.builtin.env', 'INVENTORY_SSH_PUBLIC_KEY_FILE', default=undef())) | trim }}"
+    inventory_service_account: "{{ inventory_managed_user | default(ansible_user) }}"
+
+  pre_tasks:
+    - name: Прочитать версию ОС и параметры текущего SSH-соединения
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - "!min"
+          - distribution
+          - env
+
+    - name: Подтвердить Ubuntu и согласованный адрес оператора
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.distribution == 'Ubuntu'
+          - ansible_facts.env.SSH_CONNECTION is defined
+          - ansible_facts.env.SSH_CONNECTION.split()[0] == inventory_ssh_source
+          - inventory_public_key is match('^(ssh-|ecdsa-|sk-)[^ \\n]+ +[A-Za-z0-9+/=]+( +[^\\n]*)?$')
+          - inventory_deploy_dir.startswith('/') and inventory_deploy_dir.strip('/') | length > 0
+        fail_msg: Проверьте Ubuntu, адрес SSH-оператора, файл открытого ключа и абсолютный путь каталога приложения.
+        quiet: true
+
+    - name: Показать подтверждённую версию Ubuntu
+      ansible.builtin.debug:
+        msg: "Ubuntu {{ ansible_facts.distribution_version }}"
+
+    - name: Проверить получение прав root через sudo
+      ansible.builtin.command: /usr/bin/id -u
+      become: true
+      register: inventory_effective_uid
+      changed_when: false
+      failed_when: inventory_effective_uid.rc != 0 or inventory_effective_uid.stdout != '0'
+      check_mode: false
+
+    - name: Проверить наличие существующей конфигурации Compose
+      ansible.builtin.stat:
+        path: "{{ inventory_deploy_dir }}/.env"
+        get_checksum: false
+        get_mime: false
+      register: inventory_compose_env
+      become: true
+
+    - name: "Проверить обязательный секрет {{ inventory_postgres_password_env }} для нового .env"
+      ansible.builtin.assert:
+        that:
+          - inventory_postgres_password_present
+        quiet: true
+      when: not inventory_compose_env.stat.exists
+      no_log: true
+
+  tasks:
+    - name: Подготовить системные ресурсы
+      become: true
+      block:
+        - name: Установить необходимые пакеты Ubuntu
+          ansible.builtin.apt:
+            name:
+              - openssh-server
+              - ufw
+            state: present
+            update_cache: true
+            cache_valid_time: 3600
+
+        - name: Узнать, установлен ли Docker Engine
+          ansible.builtin.package_facts:
+
+        - name: Установить Docker Engine из репозитория Ubuntu
+          ansible.builtin.apt:
+            name: docker.io
+            state: present
+          when:
+            - "'docker-ce' not in ansible_facts.packages"
+            - "'docker.io' not in ansible_facts.packages"
+
+        - name: Установить Compose для установленного Docker Engine
+          ansible.builtin.apt:
+            name: "{{ 'docker-compose-plugin' if 'docker-ce' in ansible_facts.packages else 'docker-compose-v2' }}"
+            state: present
+
+        - name: Проверить минимальную версию Docker Compose из README
+          ansible.builtin.command: docker compose version --short
+          register: inventory_compose_version
+          changed_when: false
+          failed_when: >-
+            inventory_compose_version.rc != 0 or
+            (inventory_compose_version.stdout | regex_replace('^v', '')) is version('2.22.0', '<')
+          when: not ansible_check_mode
+
+        - name: Создать учётную запись оператора
+          # Доступ к Docker приравнен к правам root, поэтому группы не расширяем.
+          ansible.builtin.user:
+            name: "{{ inventory_service_account }}"
+            create_home: true
+            state: present
+
+        - name: Добавить согласованный открытый ключ оператора
+          ansible.posix.authorized_key:
+            user: "{{ inventory_service_account }}"
+            key: "{{ inventory_public_key }}"
+            state: present
+
+        - name: Создать каталог приложения
+          ansible.builtin.file:
+            path: "{{ inventory_deploy_dir }}"
+            state: directory
+            owner: "{{ inventory_service_account if not inventory_compose_env.stat.exists else omit }}"
+            mode: "{{ '0750' if not inventory_compose_env.stat.exists else omit }}"
+
+        - name: Создать конфигурацию Compose при отсутствии файла
+          ansible.builtin.template:
+            src: compose.env.j2
+            dest: "{{ inventory_deploy_dir }}/.env"
+            owner: "{{ inventory_service_account }}"
+            mode: "0600"
+            force: false
+          when: not inventory_compose_env.stat.exists
+          no_log: true
+          diff: false
+
+        - name: Ограничить права на существующую конфигурацию Compose
+          ansible.builtin.file:
+            path: "{{ inventory_deploy_dir }}/.env"
+            follow: false
+            mode: "0600"
+          when: inventory_compose_env.stat.exists
+
+        - name: Настроить согласованные HTTP registry
+          when: inventory_insecure_registries | default([]) | length > 0
+          block:
+            - name: Проверить наличие конфигурации Docker
+              ansible.builtin.stat:
+                path: /etc/docker/daemon.json
+              register: inventory_docker_config
+
+            - name: Прочитать имеющуюся конфигурацию Docker
+              ansible.builtin.slurp:
+                src: /etc/docker/daemon.json
+              register: inventory_docker_config_file
+              when: inventory_docker_config.stat.exists
+              no_log: true
+
+            - name: Создать каталог конфигурации Docker
+              ansible.builtin.file:
+                path: /etc/docker
+                state: directory
+                mode: "0755"
+
+            - name: Добавить registry с сохранением существующих параметров Docker
+              ansible.builtin.template:
+                src: daemon.json.j2
+                dest: /etc/docker/daemon.json
+                owner: root
+                group: root
+                mode: "{{ inventory_docker_config.stat.mode | default('0600') }}"
+                validate: dockerd --validate --config-file %s
+              no_log: true
+              diff: false
+              vars:
+                inventory_docker_settings: "{{ inventory_docker_config_file.content | b64decode | from_json if inventory_docker_config.stat.exists else {} }}"
+              when: inventory_insecure_registries | difference(inventory_docker_settings.get('insecure-registries', [])) | length > 0
+              notify: Перезапустить Docker
+
+        - name: Запустить Docker и включить его при загрузке
+          ansible.builtin.service:
+            name: docker
+            state: started
+            enabled: true
+
+        - name: Проверить, что служба SSH запущена
+          ansible.builtin.service:
+            name: ssh
+            state: started
+
+        - name: Разрешить SSH с согласованного адреса оператора
+          # UFW фильтрует вход на хост. Публикацию портов Docker этот playbook не настраивает.
+          community.general.ufw:
+            rule: allow
+            proto: tcp
+            from_ip: "{{ inventory_ssh_source }}"
+            port: "{{ ansible_facts.env.SSH_CONNECTION.split()[3] }}"
+
+        - name: Запретить остальные входящие соединения по умолчанию
+          community.general.ufw:
+            direction: incoming
+            default: deny
+
+        - name: Включить UFW
+          community.general.ufw:
+            state: enabled
+
+  handlers:
+    - name: Перезапустить Docker
+      ansible.builtin.service:
+        name: docker
+        state: restarted
+      become: true
