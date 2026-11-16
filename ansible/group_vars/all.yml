@@ -1,0 +1,4 @@
+---
+# Пути существующей конфигурации и проверки приложения.
+inventory_compose_file: docker-compose.yml
+inventory_readiness_path: /health/ready

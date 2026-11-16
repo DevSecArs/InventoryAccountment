@@ -1,0 +1,9 @@
+dev:
+  vars:
+    inventory_deploy_dir: /opt/InventoryAccountment
+    # Оператор передаёт пароль из существующих настроек Dev вне Git.
+    inventory_postgres_password_env: INVENTORY_DEV_POSTGRES_PASSWORD
+  hosts:
+    inventory-dev:
+      ansible_host: 192.168.56.111
+      ansible_user: inv_acc
