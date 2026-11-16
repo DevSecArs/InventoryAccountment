@@ -2,6 +2,8 @@ dev:
   vars:
     inventory_deploy_dir: /opt/InventoryAccountment
     inventory_managed_user: inv_acc
+    # Порт опубликован в deploy/docker-compose.staging.yml.
+    inventory_readiness_origin: "http://{{ ansible_host }}:8081"
     inventory_insecure_registries:
       - 192.168.56.111:5000
     # Оператор передаёт пароль из существующих настроек Dev вне Git.

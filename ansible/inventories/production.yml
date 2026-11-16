@@ -1,6 +1,7 @@
 production:
   vars:
     inventory_deploy_dir: "{{ lookup('ansible.builtin.env', 'INVENTORY_PRODUCTION_DEPLOY_DIR', default=undef()) }}"
+    inventory_readiness_origin: "{{ lookup('ansible.builtin.env', 'INVENTORY_PRODUCTION_READINESS_ORIGIN') }}"
     # Источник пароля Production согласуется отдельно.
     inventory_postgres_password_env: INVENTORY_PRODUCTION_POSTGRES_PASSWORD
   hosts:

@@ -1,0 +1,42 @@
+---
+- name: Проверить адрес приложения выбранного окружения
+  hosts: all
+  connection: local
+  gather_facts: false
+  any_errors_fatal: true
+
+  tasks:
+    - name: Проверить базовый HTTP(S)-адрес
+      ansible.builtin.assert:
+        that:
+          - inventory_readiness_origin is match('^https?://[^/?#@\s]+/?$')
+          - inventory_readiness_origin | urlsplit('hostname') is not none
+        fail_msg: Укажите адрес приложения вида http(s)://хост с необязательным портом.
+        quiet: true
+
+- name: Подготовить выбранное окружение
+  ansible.builtin.import_playbook: prepare.yml
+
+- name: Проверить готовность приложения с машины оператора
+  hosts: all
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+  tasks:
+    - name: Дождаться HTTP 200 от /health/ready
+      ansible.builtin.uri:
+        url: "{{ inventory_readiness_origin | regex_replace('/$', '') }}{{ inventory_readiness_path }}"
+        status_code: [200]
+        follow_redirects: none
+        use_proxy: false
+        use_netrc: false
+        timeout: 3
+      # Ограничиваем и сетевое ожидание, и выполнение каждой попытки целиком.
+      timeout: 5
+      register: inventory_readiness
+      until: inventory_readiness.status | default(0) == 200
+      retries: 5
+      delay: 2
+      check_mode: false
