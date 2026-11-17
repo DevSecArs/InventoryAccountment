@@ -1,0 +1,5 @@
+---
+# Пути существующей конфигурации и проверки приложения.
+inventory_compose_file: docker-compose.yml
+inventory_readiness_path: /health/ready
+inventory_postgres_password_present: "{{ lookup('ansible.builtin.env', inventory_postgres_password_env) | trim | length > 0 }}"

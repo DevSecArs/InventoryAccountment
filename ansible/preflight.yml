@@ -1,0 +1,23 @@
+---
+- name: Проверить входные параметры выбранного окружения
+  hosts: all
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Проверить параметры узла и каталога развёртывания
+      ansible.builtin.assert:
+        that:
+          - ansible_host | trim | length > 0
+          - ansible_user | trim | length > 0
+          - inventory_deploy_dir | trim | length > 0
+        fail_msg: Укажите адрес узла, пользователя SSH и каталог развёртывания.
+        quiet: true
+
+    - name: "Проверить обязательный секрет {{ inventory_postgres_password_env }}"
+      ansible.builtin.assert:
+        that:
+          - inventory_postgres_password_present
+        quiet: true
+      when: inventory_check_postgres_password | default(true)
+      no_log: true
