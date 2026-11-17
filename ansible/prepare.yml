@@ -189,23 +189,25 @@
             name: ssh
             state: started
 
-        - name: Разрешить SSH с согласованного адреса оператора
-          # UFW фильтрует вход на хост. Публикацию портов Docker этот playbook не настраивает.
-          community.general.ufw:
-            rule: allow
-            proto: tcp
-            from_ip: "{{ inventory_ssh_source }}"
-            port: "{{ ansible_facts.env.SSH_CONNECTION.split()[3] }}"
+        - name: Управлять firewall
+          when: inventory_manage_firewall | default(true) | bool
+          block:
+            - name: Разрешить SSH с согласованного адреса оператора
+              # UFW фильтрует вход на хост. Публикацию портов Docker этот playbook не настраивает.
+              community.general.ufw:
+                rule: allow
+                proto: tcp
+                from_ip: "{{ inventory_ssh_source }}"
+                port: "{{ ansible_facts.env.SSH_CONNECTION.split()[3] }}"
 
-        - name: Запретить остальные входящие соединения по умолчанию
-          community.general.ufw:
-            direction: incoming
-            default: deny
+            - name: Запретить остальные входящие соединения по умолчанию
+              community.general.ufw:
+                direction: incoming
+                default: deny
 
-        - name: Включить UFW
-          community.general.ufw:
-            state: enabled
-
+            - name: Включить UFW
+              community.general.ufw:
+                state: enabled
   handlers:
     - name: Перезапустить Docker
       ansible.builtin.service:
