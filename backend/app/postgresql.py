@@ -17,6 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
+from app.observability import log_application_error
 
 if sys.platform == "win32":
     os.environ["PYTHONIOENCODING"] = "utf-8"
@@ -85,7 +86,10 @@ def is_database_ready() -> bool:
     try:
         with get_engine().connect() as connection:
             connection.execute(text("SELECT 1"))
-    except (SQLAlchemyError, OSError, RuntimeError, ImportError):
-        logger.exception("Проверка готовности PostgreSQL завершилась ошибкой")
+    except (SQLAlchemyError, OSError, RuntimeError, ImportError) as exception:
+        log_application_error(
+            event="database_readiness_error",
+            exception=exception,
+        )
         return False
     return True
