@@ -1,0 +1,11 @@
+groups:
+  - name: inventory
+    rules:
+      - alert: BackendUnavailable
+        expr: absent(up{job="backend"}) or up{job="backend"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backend недоступен"
+          description: "Prometheus не обнаруживает backend или не может получить его метрики."

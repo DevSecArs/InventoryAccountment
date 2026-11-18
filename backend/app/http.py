@@ -7,13 +7,15 @@ import os
 import socket
 from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import asynccontextmanager
+from time import perf_counter
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -25,6 +27,7 @@ from app.entities.routers import (
     supplier_router,
     unit_router,
 )
+from app.observability import log_application_error, log_http_request, observe_http_request
 from app.postgresql import close_database, is_database_ready, session_scope
 
 logger = logging.getLogger(__name__)
@@ -107,6 +110,13 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
         lifespan=lifespan,
     )
 
+    @application.get("/metrics", include_in_schema=False)
+    def metrics() -> Response:
+        return Response(
+            content=generate_latest(),
+            media_type=CONTENT_TYPE_LATEST,
+        )
+
     @application.get("/version")
     def version() -> dict[str, str]:
         return {"sha": os.environ.get("BUILD_GIT_SHA", "unknown")}
@@ -114,7 +124,34 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
     @application.middleware("http")
     async def response_headers_middleware(request: Request, call_next: Any) -> Any:
         request.state.request_id = _valid_request_id(request.headers.get(REQUEST_ID_HEADER))
-        response = await call_next(request)
+        started = perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration_ms = (perf_counter() - started) * 1000
+            log_http_request(
+                request,
+                status_code=500,
+                duration_ms=duration_ms,
+            )
+            observe_http_request(
+                request,
+                status_code=500,
+                duration_ms=duration_ms,
+            )
+            raise
+
+        duration_ms = (perf_counter() - started) * 1000
+        log_http_request(
+            request,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+        )
+        observe_http_request(
+            request,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+        )
         response.headers[REQUEST_ID_HEADER] = request.state.request_id
         return _add_instance_id(response)
 
@@ -145,10 +182,10 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
 
     @application.exception_handler(Exception)
     async def unexpected_error_handler(request: Request, exception: Exception) -> JSONResponse:
-        logger.exception(
-            "Непредвиденная ошибка HTTP API",
-            extra={"request_id": _get_request_id(request)},
-            exc_info=exception,
+        log_application_error(
+            event="unexpected_http_error",
+            exception=exception,
+            request_id=_get_request_id(request),
         )
         response = _error_response(
             request,

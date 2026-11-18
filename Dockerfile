@@ -19,7 +19,7 @@ COPY --chown=1001:0 backend/alembic.ini ./
 COPY --chown=1001:0 backend/alembic ./alembic
 USER 1001
 ENTRYPOINT ["/opt/app-root/src/.venv/bin/python"]
-CMD ["-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "30"]
+CMD ["-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "30", "--no-access-log"]
 
 FROM 192.168.56.111:5000/nginxinc/nginx-unprivileged:1.29.3-alpine@sha256:5aea7cc516b419e3526f47dd1531be31a56a046cfe44754d94f9383e13e2ee99 AS nginx
 USER root
