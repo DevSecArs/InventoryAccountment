@@ -28,6 +28,10 @@ services:
       target: backend
     deploy:
       replicas: 2
+    networks:
+      default:
+      observability:
+        aliases: [backend-dev]
     environment:
       POSTGRES_HOST: db
       POSTGRES_USER: ${POSTGRES_USER:-inventory_app}
@@ -66,3 +70,8 @@ services:
 
 volumes:
   inventory_data:
+
+networks:
+  observability:
+    external: true
+    name: inventory-observability

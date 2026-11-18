@@ -1,11 +1,17 @@
 """Проверки метрик Prometheus."""
 
+import pytest
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 from prometheus_client import REGISTRY
 
 from app import http
 from app.http import create_app
+
+
+@pytest.fixture(autouse=True)
+def ready_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(http, "is_database_ready", lambda: True)
 
 
 def metric_value(name: str, labels: dict[str, str] | None = None) -> float:
@@ -43,6 +49,14 @@ def test_readiness_metric_reflects_database_status(monkeypatch) -> None:
     monkeypatch.setattr(http, "is_database_ready", lambda: True)
     assert client.get("/health/ready").status_code == 200
     assert metric_value("app_readiness") == 1
+
+    # Scrape должен проверять БД заново без обращения к healthcheck.
+    monkeypatch.setattr(http, "is_database_ready", lambda: False)
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert "app_readiness 0.0" in response.text
+    monkeypatch.setattr(http, "is_database_ready", lambda: True)
+    assert "app_readiness 1.0" in client.get("/metrics").text
 
 
 def test_receipts_counter_counts_successful_creation_only() -> None:

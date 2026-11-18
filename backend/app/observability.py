@@ -17,7 +17,6 @@ if not http_logger.handlers:
     http_logger.addHandler(handler)
 
 
-
 def log_application_error(
     *,
     event: str,
@@ -34,9 +33,7 @@ def log_application_error(
     if request_id is not None:
         record["request_id"] = request_id
 
-    http_logger.error(
-        json.dumps(record, ensure_ascii=False, separators=(",", ":"))
-    )
+    http_logger.error(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
 
 
 def safe_route_path(request: Request) -> str:
@@ -72,9 +69,7 @@ def log_http_request(
         "request_id": request.state.request_id,
     }
 
-    http_logger.info(
-        json.dumps(event, ensure_ascii=False, separators=(",", ":"))
-    )
+    http_logger.info(json.dumps(event, ensure_ascii=False, separators=(",", ":")))
 
 
 # Метрики хранятся отдельно в каждой реплике backend.
@@ -123,9 +118,6 @@ def observe_http_request(
         method=method,
         route=safe_route,
     ).observe(duration_ms / 1000)
-
-    if safe_route == "/health/ready":
-        APP_READINESS.set(1 if status_code == 200 else 0)
 
     # Считаем только успешное создание поступления.
     # Фактический URL используется для точного сравнения,

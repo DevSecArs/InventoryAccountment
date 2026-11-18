@@ -2,16 +2,23 @@ name: inventory-monitoring
 
 services:
   prometheus:
-    image: prom/prometheus:v3.7.3
+    image: 192.168.56.111:5000/prom/prometheus:v3.7.3@sha256:49214755b6153f90a597adcbff0252cc61069f8ab69ce8411285cd4a560e8038
     restart: unless-stopped
     cpus: 0.5
     mem_limit: 512m
     ports:
-      - "127.0.0.1:9090:9090"
+      - "0.0.0.0:9090:9090"
+    environment:
+      MONITORING_ENV: ${MONITORING_ENV:?Set MONITORING_ENV to dev or production}
+    entrypoint: [/bin/sh, -ec]
     command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=3d
+      - |
+        case "$$MONITORING_ENV" in dev|production) ;; *) echo 'Invalid MONITORING_ENV' >&2; exit 1;; esac
+        sed "s/MONITORING_ENV/$$MONITORING_ENV/g" /etc/prometheus/prometheus.yml > /prometheus/active.yml
+        sed "s/MONITORING_ENV/$$MONITORING_ENV/g" /etc/prometheus/alerts.yml > /prometheus/alerts.yml
+        exec /bin/prometheus --config.file=/prometheus/active.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention.time=3d
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
@@ -20,12 +27,12 @@ services:
       - observability
 
   grafana:
-    image: grafana/grafana:12.3.0
+    image: 192.168.56.111:5000/grafana/grafana:12.3.0@sha256:70d9599b186ce287be0d2c5ba9a78acb2e86c1a68c9c41449454d0fc3eeb84e8
     restart: unless-stopped
     cpus: 0.5
     mem_limit: 384m
     ports:
-      - "127.0.0.1:3000:3000"
+      - "0.0.0.0:3000:3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}
       GF_USERS_ALLOW_SIGN_UP: "false"
@@ -39,16 +46,17 @@ services:
       - prometheus
 
   node-exporter:
-    image: prom/node-exporter:v1.10.2
+    image: 192.168.56.111:5000/prom/node-exporter:v1.10.2@sha256:3ac34ce007accad95afed72149e0d2b927b7e42fd1c866149b945b84737c62c3
     restart: unless-stopped
     cpus: 0.2
     mem_limit: 64m
+    pid: host
+    network_mode: host
     command:
       - --path.rootfs=/host
+      - --web.listen-address=${NODE_EXPORTER_LISTEN_ADDRESS:-172.17.0.1}:9100
     volumes:
       - /:/host:ro,rslave
-    networks:
-      - observability
 
 networks:
   observability:

@@ -27,7 +27,12 @@ from app.entities.routers import (
     supplier_router,
     unit_router,
 )
-from app.observability import log_application_error, log_http_request, observe_http_request
+from app.observability import (
+    APP_READINESS,
+    log_application_error,
+    log_http_request,
+    observe_http_request,
+)
 from app.postgresql import close_database, is_database_ready, session_scope
 
 logger = logging.getLogger(__name__)
@@ -112,6 +117,7 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
 
     @application.get("/metrics", include_in_schema=False)
     def metrics() -> Response:
+        APP_READINESS.set(1 if is_database_ready() else 0)
         return Response(
             content=generate_latest(),
             media_type=CONTENT_TYPE_LATEST,
@@ -213,7 +219,9 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
         summary="Проверить готовность приложения и PostgreSQL",
     )
     def readiness() -> HealthResponse:
-        if not is_database_ready():
+        ready = is_database_ready()
+        APP_READINESS.set(1 if ready else 0)
+        if not ready:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="PostgreSQL недоступна",
