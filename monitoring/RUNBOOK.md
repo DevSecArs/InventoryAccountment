@@ -316,3 +316,105 @@ Docker сообщал об отсутствии exit event и zombie PID Prometh
 При пробном некорректном коде единицы API вернул 500
 (PydanticSerializationError в обработчике валидации). Это наблюдение для этапа 2;
 проверка предметной метрики выполнена с допустимым кодом KG.
+
+## Этап 2: журналы и исправление валидации
+
+Причина найденного HTTP 500: RequestValidationError.errors() содержал
+ValueError в ctx. Обработчик пытался сериализовать его в JSON.
+Теперь ответ 422 содержит только type/loc/msg, без input и ctx.
+Необработанные ошибки преобразуются в 500 на границе HTTP middleware;
+тип ошибки и request_id записываются безопасно, без текста исключения
+и traceback Uvicorn. HTTP-событие записывается один раз, включая метрики.
+Реальный уровень записи для 5xx — ERROR. SQL echo отключён даже при APP_DEBUG,
+параметры SQL скрыты: пароли, сессии и тела не должны попадать в SQL-журнал.
+В HTTP middleware оставлено локальное обоснованное исключение BLE001:
+эта граница обязана обработать неизвестную ошибку без раскрытия traceback.
+Конфигурации анализаторов и пороги не менялись; остальные проверки Ruff работают.
+
+Регрессионный барьер — существующий backend/tests/unit/test_observability.py.
+До исправления новые проверки дали 3 failed / 6 passed: сериализация ошибки,
+повторное выбрасывание исключения с секретом, SQL echo при APP_DEBUG.
+Проверяются успешные запросы, 404, 422, 500, обязательные поля HTTP-события,
+корреляция с X-Request-ID, неизвестный и параметризованный URL, query string,
+Authorization/Cookie, тело, недопустимый request_id и текст исключения.
+Тестовая ошибка 500 не добавляет маршрут в штатное приложение.
+
+Повторная диагностика от inv_acc на VM:
+
+```bash
+cd /home/inv_acc/inventory-monitoring-stage1
+COMPOSE_PROJECT_NAME=inventory-monitoring-apicheck make status
+curl -fsS http://127.0.0.1:8080/health/live
+curl -fsS http://127.0.0.1:9090/api/v1/alerts
+```
+
+Ожидаются здоровые контейнеры, status=ok и пустой список alerts.
+Для повторной проверки исправленного запроса (только тестовый Dev):
+
+```bash
+python3 - <<'PY'
+import http.cookiejar, json, urllib.request, urllib.error
+from pathlib import Path
+op = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+base = 'http://127.0.0.1:8080/api/v1'
+credentials = json.loads((Path.home()/'.config/inventory-monitoring/dev-api.json').read_text())
+r = op.open(urllib.request.Request(base+'/auth/login', json.dumps(credentials).encode(),
+    {'Content-Type':'application/json'}), timeout=10)
+csrf = json.load(r)['csrf_token']
+try:
+    op.open(urllib.request.Request(base+'/units/', b'{"code":"INVALID"}',
+        {'Content-Type':'application/json', 'X-CSRF-Token':csrf}), timeout=10)
+except urllib.error.HTTPError as error:
+    assert error.code == 422
+    body = json.load(error)
+    assert body['code'] == 'validation_error'
+    assert all('ctx' not in x and 'input' not in x for x in body['details'])
+    print(error.code, error.headers['X-Request-ID'], body['code'])
+else:
+    raise AssertionError('Ожидался HTTP 422')
+PY
+```
+
+Ожидается 422, UUID и validation_error. По полученному UUID найдите запись
+http_request следующей командой (подставьте UUID из ответа):
+
+```bash
+COMPOSE_PROJECT_NAME=inventory-monitoring-apicheck docker compose logs --since=5m backend | grep -F UUID_ИЗ_ОТВЕТА
+```
+Для регрессионной проверки всех исходов используйте штатные make test и make quality.
+Восстановление кода: верните совместимую ревизию, выполните make build и make up
+с COMPOSE_PROJECT_NAME=inventory-monitoring-apicheck; том и схема не меняются.
+Учитывайте, что откат возвращает исправленные ошибки и риск утечки SQL-параметров.
+Не очищайте таблицы и тома ради восстановления журналирования.
+
+Фактические живые проверки этапа 2:
+
+- Через Nginx/API подтверждены 200, 404 и исправленный 422, поля JSON и request_id;
+  синтетический секрет не обнаружен в журналах обеих реплик backend.
+- В одноразовом контейнере того же backend-образа настоящий Uvicorn обработал
+  контролируемое исключение: ответ 500, безопасные события http_request и
+  unexpected_http_error, без текста секрета и traceback. БД не использовалась.
+- Контрольный синтетический query-маркер в журнале Nginx не обнаружен;
+  конфигурация Nginx не менялась. Это ограниченная проверка, не гарантия
+  секретности всех внутренних сообщений прокси при любых неисправностях.
+- make quality прошёл, отчёты reports/20261118t221801z-169095/.
+  pip-audit тестового образа из uv.lock: код 0, известных уязвимостей нет;
+  локальный пакет inventory-accountment отсутствует в PyPI и не аудируется.
+
+Это профилактический барьер для реально воспроизведённых дефектов,
+но не завершение пункта 14 целиком: учебный инцидент и изменение процесса
+по его результатам остаются в отложенном этапе 3. CI, PR и человеческая
+приёмка не выполнялись. Критический файл этапа — существующий файл тестов.
+Новых файлов, миграций, сервисов и стека сбора журналов не добавлено.
+
+Итог автоматических проверок этапа 2: make test — код 0, 86 passed (38,79 с),
+покрытие 84,98%, уничтожены 160/160 мутантов; штатная очистка завершена.
+Отчёты: reports/20261118t221629z-164505/, журнал reports-stage2-test.log.
+make quality, make container-check, четыре Docker-теста, три Compose-конфигурации,
+JSON dashboard, promtool check config/check rules и git diff --check прошли.
+Полный security/verify и Trivy не запускались: проверочная копия VM без .git
+не подходит для штатной подготовки исходников и проверки полной истории;
+на локальном компьютере Docker daemon недоступен. CI и релиз не выполнялись.
+Проверка ссылок документации: используются существующие пути/команды;
+команда ручной проверки 422 выполнена дословно и прошла.

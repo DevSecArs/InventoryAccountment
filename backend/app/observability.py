@@ -69,7 +69,10 @@ def log_http_request(
         "request_id": request.state.request_id,
     }
 
-    http_logger.info(json.dumps(event, ensure_ascii=False, separators=(",", ":")))
+    http_logger.log(
+        logging.ERROR if status_code >= 500 else logging.INFO,
+        json.dumps(event, ensure_ascii=False, separators=(",", ":")),
+    )
 
 
 # Метрики хранятся отдельно в каждой реплике backend.

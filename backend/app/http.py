@@ -133,19 +133,19 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
         started = perf_counter()
         try:
             response = await call_next(request)
-        except Exception:
-            duration_ms = (perf_counter() - started) * 1000
-            log_http_request(
-                request,
-                status_code=500,
-                duration_ms=duration_ms,
+        # На границе HTTP скрываем traceback с возможными секретами.
+        except Exception as exception:  # noqa: BLE001
+            log_application_error(
+                event="unexpected_http_error",
+                exception=exception,
+                request_id=request.state.request_id,
             )
-            observe_http_request(
+            response = _error_response(
                 request,
-                status_code=500,
-                duration_ms=duration_ms,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                code="internal_error",
+                message="Внутренняя ошибка сервера",
             )
-            raise
 
         duration_ms = (perf_counter() - started) * 1000
         log_http_request(
@@ -170,7 +170,10 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             code="validation_error",
             message="Переданы некорректные данные",
-            details=exception.errors(),
+            # Входные значения и ctx могут содержать секреты и объекты исключений.
+            details=[
+                {key: error[key] for key in ("type", "loc", "msg")} for error in exception.errors()
+            ],
         )
 
     @application.exception_handler(HTTPException)
@@ -185,22 +188,6 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
             message=message,
             details=details,
         )
-
-    @application.exception_handler(Exception)
-    async def unexpected_error_handler(request: Request, exception: Exception) -> JSONResponse:
-        log_application_error(
-            event="unexpected_http_error",
-            exception=exception,
-            request_id=_get_request_id(request),
-        )
-        response = _error_response(
-            request,
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            code="internal_error",
-            message="Внутренняя ошибка сервера",
-        )
-        response.headers[REQUEST_ID_HEADER] = _get_request_id(request)
-        return _add_instance_id(response)
 
     @application.get(
         "/health/live",

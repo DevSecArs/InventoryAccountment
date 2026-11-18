@@ -37,7 +37,8 @@ def get_engine() -> Engine:
         pool_pre_ping=True,
         pool_timeout=3,
         connect_args={"connect_timeout": 3},
-        echo=settings.APP_DEBUG,
+        echo=False,
+        hide_parameters=True,
     )
 
 
