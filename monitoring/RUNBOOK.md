@@ -574,3 +574,144 @@ PR: https://github.com/DevSecArs/InventoryAccountment/pull/13 (draft).
 Изменения защиты веток не выполнялись. После слияния нужно проверить реальный
 CI, publication/deploy, SHA/digest и повторить исходный профиль нагрузки;
 пункты 11–12 до этого остаются частично выполненными.
+
+## Итог фактического выпуска 19 ноября 2026
+
+Этот раздел фиксирует итог; прежние отметки об ожидании merge/CI/релиза
+относятся к моментам подготовки PR и больше не описывают текущее состояние.
+
+PR #13 слит пользователем в dev 2026-11-19 09:42:15 UTC:
+https://github.com/DevSecArs/InventoryAccountment/pull/13
+Merge SHA: af31e1abf4c2afe031610e25fb1f0f52be58c1f9.
+GitHub Reviews при проверке после слияния — пустой список; независимое review
+и человеческая приёмка не подтверждены. Защита веток агентом не менялась.
+
+CI: https://github.com/DevSecArs/InventoryAccountment/actions/runs/44498856226
+Итог completed/success. Все 12 jobs успешны: backend-тесты и мутации,
+Ruff/форматирование/mypy, Bandit/Gitleaks/pip-audit, миграции на изолированной БД,
+backup/restore на изолированной БД, контейнерная конфигурация, сборка,
+три Trivy-сканирования, публикация и штатный staging deploy.
+Журнал CI подтверждает 87 passed (33,34 с), покрытие 84,98%, 160/160 мутантов.
+Gitleaks использует ровно два описанных выше исторических исключения.
+Trivy backend: 6 MEDIUM, 1 LOW; Nginx и db — 0 находок в отчётах.
+Это результаты при ignore-unfixed=true, а не гарантия отсутствия всех CVE.
+
+Артефакт published-images-44498856226-1 содержит проверенный набор:
+- backend: 192.168.56.111:5000/inventory/backend@sha256:043298fecfabb7af4fff258bb39766659d8a8789ad86b643bd6f21e32205825b
+- frontend: 192.168.56.111:5000/inventory/frontend@sha256:9fa1b7e2dcc662354a7dfc8c2d75d370165c9a6f346d622555bcf7a0f3960fa0
+- db: 192.168.56.111:5000/inventory/db@sha256:6e9287c3a626921c4bd8ca3ad6e8c462018cb0673037c67d19a86d1730ef7de1
+
+Все три ссылки сверены с Config.Image/RepoDigests реально запущенных
+контейнеров, SHA-тегами registry через SHA256 сырого манифеста и файлами
+/opt/actions-runner/staging/releases/af31e1abf4c2afe031610e25fb1f0f52be58c1f9.env
+и images.env. Читались только image-манифесты, не staging.env с паролями.
+Запись выпуска создана штатным CI deploy, не вручную.
+
+В Production работают nginx, db и две backend-реплики, все running/healthy.
+Обе внутренние /version и ответ Nginx вернули полный merge SHA.
+В серии из 20 запросов обе реплики обслуживали трафик: d71b5d18ad1d — 11,
+cea0b2fa95bd — 9. Backend и frontend обновлены с прежних digest,
+digest db sha256:6e9287c3a626921c4bd8ca3ad6e8c462018cb0673037c67d19a86d1730ef7de1 сохранился.
+
+### Проверка рабочей схемы и первоначальная подготовка
+
+После зелёного CI дополнительный alembic current не показал ревизии.
+Read-only проверка установила: inventory_staging была полностью пустой,
+таблиц public не было. Автоматический deploy проверяет процессы/версию
+и /health/ready (SELECT 1), но сам не применяет миграции к рабочей БД.
+Это реальный пробел автоматизации, не скрытый успешным статусом CI.
+
+В рамках первоначального запуска выполнены существующие миграции именно
+из выпущенного образа штатной командой:
+```bash
+docker exec inventory-staging-backend-1 /opt/app-root/src/.venv/bin/python -m alembic upgrade head
+docker exec inventory-staging-backend-1 /opt/app-root/src/.venv/bin/python -m alembic current
+```
+
+Результат a5b7c9d1e004 (head). Созданы существующие девять таблиц, включая
+alembic_version; новых миграций/изменений модели нет. Пользователи,
+единицы, материалы, поставщики и поступления — по 0. Данные не очищались.
+Учётная запись администратора не создавалась: первый администратор
+регистрируется владельцем через интерфейс согласно README.
+Полноценный вход и чтение справочников с пользовательской сессией
+не проверялись; без сессии API защищённых разделов возвращает 401.
+Первоначальный bootstrap схемы нельзя выдавать за автоматический шаг deploy.
+
+### Сравнение до и после
+
+Одинаковый клиентский профиль на VM: 20 GET /health/live через
+192.168.56.111:8081, concurrency=1, пауза 0,2 с. p95 — 19-я отсортированная
+задержка из 20. Выборка мала, фоновая нагрузка не фиксировалась;
+это наблюдения, а не доказательство улучшения/ухудшения производительности.
+
+| Показатель | До | После завершения подготовки схемы |
+|---|---|---|
+| /version | 68e29ad73022f1ce92cabd39a0574019e48293f4 | af31e1abf4c2afe031610e25fb1f0f52be58c1f9 |
+| Состав и готовность | nginx + db + 2 backend, healthy | тот же состав, healthy |
+| Ошибки health-серии | 0/20 | 0/20 |
+| p50, мс | 8,0635 | 9.9920 |
+| p95, мс | 22,89 | 49.6051 |
+| Недопустимый login регистрации | HTTP 500 | HTTP 422, validation_error |
+| Рабочая схема | таблиц public нет | a5b7c9d1e004 (head) |
+
+Контрольный сценарий отклоняет запрос на валидации и не создаёт пользователя.
+До: 09:44:29 UTC, request_id=342417e5-965e-4a61-b2bc-9dbf47c6127d, HTTP 500.
+После: request_id=11554974-ba82-44f4-b597-a0f3daef1639, HTTP 422;
+этот же id найден в свежем JSON http_request журнала Production,
+timestamp=2026-11-19T10:16:49.765968+00:00. input/ctx в ответе отсутствуют.
+Повтор после миграций также вернул 422.
+Промежуточная серия сразу после deploy до bootstrap: p50=6,3712 мс,
+p95=46,8851 мс, 0/20 ошибок. Она сохранена отдельно и не заменяет итоговую.
+Итоговая серия: 2026-11-19T10:29:47.065640+00:00. p95 вырос относительно исходного замера;
+причина этого изменения не установлена, SLO для него не задан.
+
+До выпуска активным окружением Prometheus был Dev; production-метрики
+за тот период не выдумываются. После выпуска выбран production:
+две разные цели 172.24.0.6:8000 и 172.24.0.7:8000, up=1,
+app_readiness=1 у обеих, node up=1, alerts пуст.
+Снимок 2026-11-19T10:17:53.625270+00:00: сумма HTTP-запросов=127, 5xx=0,
+histogram p95 за окно 5m=39,64 мс. Этот histogram включает служебные запросы
+и не тождествен клиентскому профилю из 20 запросов.
+Все девять панелей Grafana возвращают данные с environment=production.
+Ресурсы VM: 6 CPU, RAM=5537943552 байт.
+Тестовый Dev остановлен штатным make down, его тома сохранены.
+
+Повторная внешняя проверка с клиентского компьютера: 8081 /version,
+9090 /-/ready, 3000 /api/health — HTTP 200. Первая попытка 8081
+завершилась таймаутом; повтор прошёл. Firewall не менялся,
+общая причина прежних системных зависаний VM не установлена.
+
+### Ручная проверка итогового релиза
+
+От inv_acc на VM:
+```bash
+docker ps --filter label=com.docker.compose.project=inventory-staging --format '{{.Names}} {{.Status}}'
+curl -fsS http://192.168.56.111:8081/version
+curl -fsS http://192.168.56.111:8081/health/ready
+for replica in 1 2; do
+  docker exec "inventory-staging-backend-$replica" /opt/app-root/src/.venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/version',timeout=5).read().decode())"
+done
+curl -fsSG http://192.168.56.111:9090/api/v1/query --data-urlencode 'query=up{job="backend",environment="production"}'
+curl -fsSG http://192.168.56.111:9090/api/v1/query --data-urlencode 'query=app_readiness{environment="production"}'
+curl -fsS http://192.168.56.111:9090/api/v1/alerts
+docker exec inventory-staging-backend-1 /opt/app-root/src/.venv/bin/python -m alembic current
+```
+
+Ожидаются четыре healthy-контейнера, SHA af31e1abf4c2afe031610e25fb1f0f52be58c1f9
+во всех трёх ответах версии, готовность ok, две up=1/readiness=1,
+alerts пуст, Alembic a5b7c9d1e004 (head).
+Grafana: http://192.168.56.111:3000/d/inventory-observability?var-environment=production
+
+Выпуск и согласованный ранее инцидент выполнены фактически; тестовый барьер
+SQL OperationalError вошёл в этот релиз и прошёл CI. Рабочий откат на прежний
+релиз и человеческая приёмка не проводились. Для следующего первого запуска
+нужно учесть ручное применение существующих миграций; проверки версии и
+SELECT 1 не доказывают готовность схемы. Внешняя защита dev и независимое
+review остаются организационными пробелами, а не включёнными гарантиями.
+
+Дополнительный ручной запрос исправленной функции без записи пользователя:
+```bash
+python3 -c 'import json,secrets; print(json.dumps({"login":"bad login","password":secrets.token_hex(12),"full_name":"Проверка валидации"}))' |
+  curl -sS -H 'Content-Type: application/json' --data-binary @- -w '\nHTTP %{http_code}\n' http://192.168.56.111:8081/api/v1/auth/register
+```
+Ожидается validation_error, HTTP 422 и UUID request_id; пользователя запрос не создаёт.
