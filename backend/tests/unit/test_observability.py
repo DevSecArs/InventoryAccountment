@@ -2,6 +2,7 @@
 
 import json
 import logging
+import secrets
 from datetime import datetime
 from uuid import UUID
 
@@ -101,6 +102,7 @@ def test_application_error_log_does_not_expose_exception_secret() -> None:
         def emit(self, record: logging.LogRecord) -> None:
             self.records.append(record.getMessage())
 
+    secret = secrets.token_hex(16)
     handler = CaptureHandler()
     logger = logging.getLogger("inventory.http")
     logger.addHandler(handler)
@@ -108,7 +110,7 @@ def test_application_error_log_does_not_expose_exception_secret() -> None:
     try:
         log_application_error(
             event="unexpected_http_error",
-            exception=RuntimeError("password=synthetic-secret-123"),
+            exception=RuntimeError("password=" + secret),
             request_id="test-request-123",
         )
     finally:
@@ -124,7 +126,7 @@ def test_application_error_log_does_not_expose_exception_secret() -> None:
     assert event["request_id"] == "test-request-123"
     assert "timestamp" in event
 
-    assert "synthetic-secret-123" not in handler.records[0]
+    assert secret not in handler.records[0]
     assert "password=" not in handler.records[0]
 
 
@@ -132,14 +134,16 @@ def test_application_error_log_does_not_expose_exception_secret() -> None:
     "path,expected",
     [
         ("/probe/ok", 200),
-        ("/probe/item/synthetic-private-secret-123", 200),
+        ("/probe/item/{secret}", 200),
         ("/probe/missing", 404),
         ("/api/v1/units/", 422),
         ("/probe/error", 500),
     ],
 )
 def test_http_logs_cover_outcomes_without_request_or_exception_secrets(path, expected, caplog):
-    secret = "synthetic-private-secret-123"
+    # Маркер генерируется, чтобы сканер не принимал тестовые данные за ключ.
+    secret = secrets.token_urlsafe(24)
+    path = path.replace("{secret}", secret)
     router = APIRouter()
 
     @router.get("/probe/ok")

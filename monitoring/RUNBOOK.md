@@ -418,3 +418,118 @@ JSON dashboard, promtool check config/check rules и git diff --check прошл
 на локальном компьютере Docker daemon недоступен. CI и релиз не выполнялись.
 Проверка ссылок документации: используются существующие пути/команды;
 команда ручной проверки 422 выполнена дословно и прошла.
+
+## Этап 3: согласованный выпуск и учебный инцидент
+
+Согласовано 19 ноября 2026: выпуск исправления HTTP 500 -> 422 и защиты
+журналов из a396cee вместе с мониторингом 27e6387 через PR в dev.
+Учебный инцидент — остановка только PostgreSQL inventory-monitoring-apicheck.
+Новые исходные файлы не создаются. Данные и staging при инциденте не меняются.
+
+### Исходное состояние выпуска
+
+GitHub API: dev=9011cc9b6200b48e9e5275c106d7dcc76914440e, protected=false.
+На момент начала последний CI run 44366873254 для этого SHA отменён;
+предыдущий 44156770734 завершился failure. Эти прогоны не подтверждают выпуск.
+Workflow запускает проверки только на dev/main; PR не запускает CI.
+Publish и deploy выполняются только после push в dev и успешных needs.
+
+Staging до выпуска: четыре running/healthy контейнера, /version по адресу
+192.168.56.111:8081 вернул 68e29ad73022f1ce92cabd39a0574019e48293f4,
+/health/ready — ok. Порт 8081 привязан к адресу VM, а не к loopback.
+Образы (repository@sha256):
+
+- inventory/backend: 86ae2be977ae6bf7853eb548a23fb450e4de9118ce270d3d3ecf270c334e3a81
+- inventory/frontend: dd4a83f188cf48f1577bb06a5c84bf0f693995f9b896af711ed5331918ca58e4
+- inventory/db: 6e9287c3a626921c4bd8ca3ad6e8c462018cb0673037c67d19a86d1730ef7de1
+
+Registry всех ссылок — 192.168.56.111:5000.
+Исходный профиль 09:16:21 UTC: GET /health/live через staging Nginx,
+20 запросов, concurrency=1, пауза 0,2 с, ошибок=0,
+p50=8,0635 мс, p95 (19-я из 20 отсортированных задержек)=22,89 мс.
+После реального выпуска повторить тот же профиль; результатов после пока нет.
+
+### Фактический инцидент и восстановление
+
+БД Dev остановлена командой Compose stop db 09:08:54 UTC.
+Журнал PostgreSQL подтверждает fast shutdown request и system is shut down
+в 09:08:54.433/09:08:54.774 UTC. В 09:10:21 UTC обе backend-цели имели up=1,
+но app_readiness=0; BackendUnavailable firing для обеих реплик,
+activeAt=09:09:20.77759505 UTC. Поэтому успешный scrape не доказывает готовность БД.
+Причина — недоступность PostgreSQL, а не отказ HTTP-сервера backend.
+
+Compose start db и штатный make up восстановили приложение. PostgreSQL
+ready to accept connections — 09:10:24.047 UTC. В 09:11:05 UTC обе
+app_readiness=1, up=1, alerts пуст. Тома не удалялись и не восстанавливались из дампа.
+Отдельно обнаружено: после reboot stdout backend не обновлялся, последние
+HTTP-события были датированы предыдущим днём. После штатного Compose up
+--force-recreate backend только в тестовом Dev свежие журналы подтверждены
+в 09:16:20 UTC. Причина этой проблемы Docker/журналирования не установлена.
+Не выдаём старые HTTP-журналы за свидетельство текущего инцидента;
+причина подтверждена свежим lifecycle-журналом PostgreSQL и метриками.
+
+После инцидента в существующий test_prometheus_metrics.py добавлен тест
+реального обработчика SQL OperationalError: /metrics остаётся 200,
+app_readiness падает до 0, /health/ready возвращает 503; после восстановления
+соединения readiness возвращается к 1. Негативный контроль (ошибочная readiness,
+всегда возвращающая True, только в памяти отдельного процесса) провалил этот тест.
+Это новый проверенный профилактический барьер по наблюдавшемуся отказу.
+
+### Проверки безопасности и реальные барьеры
+
+Передача полной Git-истории в эту VM выполнена только после отдельного явного
+разрешения пользователя. В Linux-копии нормализованы окончания строк CRLF -> LF
+для штатных shell-команд, рабочий .env не копировался и не перезаписывался.
+Полный make security действительно выполнен. Повторный результат:
+gitleaks-source SUCCESS, gitleaks-history FINDINGS, код 1.
+Отчёты reports/20261119t091518z-29509/security/.
+История содержит две generic-api-key находки в тестовых синтетических маркерах:
+коммиты efe9d944c8df0c4d0952c54e05ec3f087bc85c2a и
+a396cee7fd2e116cb57a8e5287c425cd83f3adee, test_observability.py.
+В текущих фикстурах маркеры теперь генерируются; проверка утечек сохранена.
+История не переписывалась, исключения сканера и пороги не менялись.
+До согласованного решения по историческим ложным срабатываниям security
+остаётся блокирующим результатом, а не успешной проверкой.
+
+CODEOWNERS и шаблон PR есть, но GitHub сообщает protected=false для dev.
+Обязательное независимое review требуется правилами репозитория, однако
+техническая блокировка слияния защитой dev сейчас не подтверждается.
+Автор PR использует DevSecArs и не может сам дать независимое одобрение;
+при совпадении автора и критического CODEOWNER нужно решение владельца процесса.
+Автоматическая проверка named approval не подключена. Настройки защиты не менялись.
+Настоящие автоматические барьеры доставки — needs publish/deploy, реальные
+ошибки тестов/сканеров, проверки digest и версии. Они не заменяют защиту слияния:
+при текущем workflow CI начинается только после попадания изменения в dev.
+
+Слияние, выпуск и итоговое сравнение до/после пока не выполнялись.
+Нельзя считать пункты 11–12 завершёнными по этому runbook или локальной сборке.
+
+Проверки профилактического изменения: 15 затронутых unit-тестов прошли;
+отрицательный контроль ошибочной readiness дал ожидаемый FAIL нового теста.
+make quality — код 0, reports/20261119t091738z-34794/.
+Полный make test завершился кодом 0: 87 passed (51,49 с), покрытие 84,98%,
+уничтожены 160/160 мутантов, штатная очистка завершена.
+Отчёты reports/20261119t091506z-28762/, журнал reports-stage3-test.log.
+
+Ручное повторение согласованного инцидента только на тестовом Dev:
+
+```bash
+cd /home/inv_acc/inventory-monitoring-stage1
+dev() { docker compose --project-name inventory-monitoring-apicheck -f docker-compose.yml "$@"; }
+trap 'dev start db; COMPOSE_PROJECT_NAME=inventory-monitoring-apicheck make up' EXIT
+dev stop db
+sleep 90
+curl -fsSG http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=up{job="backend",environment="dev"}'
+curl -fsSG http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=app_readiness{environment="dev"}'
+curl -fsS http://127.0.0.1:9090/api/v1/alerts
+dev start db
+COMPOSE_PROJECT_NAME=inventory-monitoring-apicheck make up
+trap - EXIT
+sleep 35
+curl -fsS http://127.0.0.1:9090/api/v1/alerts
+```
+
+Ожидается: при отказе up=1, readiness=0 и firing для Dev; после запуска
+БД readiness=1 и alerts пуст. Проверьте свежие события в журнале db
+(received fast shutdown request / ready to accept connections).
+Команды не выполняют down --volumes, миграцию или откат данных.
