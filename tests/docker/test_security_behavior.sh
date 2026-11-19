@@ -47,6 +47,12 @@ case "$1" in
     case "$args" in
       *zricethezav*)
         case "$args" in *' git '*) file=gitleaks-history;; *) file=gitleaks-source;; esac
+        case "${MODE:-}:$file" in
+          historical:gitleaks-history|historical-source:gitleaks-source)
+            # Проверяем точное исключение и запрет его применения к исходникам.
+            printf '%s' '[{"RuleID":"generic-api-key","File":"backend/tests/unit/test_observability.py","Commit":"a396cee7fd2e116cb57a8e5287c425cd83f3adee","StartLine":142,"EndLine":142,"Fingerprint":"a396cee7fd2e116cb57a8e5287c425cd83f3adee:backend/tests/unit/test_observability.py:generic-api-key:142"}]' > "$report/$file.json"
+            exit 1;;
+        esac
         if [ "${MODE:-}" = findings ]; then printf '[{"RuleID":"fixture"}]' > "$report/$file.json"; exit 1; fi
         if [ "${MODE:-}" = scanner ]; then exit 2; fi
         printf '[]' > "$report/$file.json";;
@@ -96,6 +102,13 @@ run_case success dependencies
 [ "$code" -eq 0 ]
 grep -q 'pip-audit: SUCCESS' "$report/status.txt"
 ! grep -Eq 'aquasec/trivy|^compose |^save ' "$CALLS"
+run_case historical
+[ "$code" -eq 0 ]
+grep -q 'gitleaks-history: SUCCESS_WITH_EXCEPTIONS' "$report/status.txt"
+grep -q 'gitleaks-source: SUCCESS' "$report/status.txt"
+run_case historical-source
+[ "$code" -ne 0 ]
+grep -q 'gitleaks-source: FINDINGS' "$report/status.txt"
 run_case findings
 [ "$code" -ne 0 ]
 grep -q 'gitleaks-source: FINDINGS' "$report/status.txt"

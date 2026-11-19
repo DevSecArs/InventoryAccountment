@@ -2,11 +2,15 @@
 
 import json
 import logging
+import secrets
 from datetime import datetime
 from uuid import UUID
 
+import pytest
+from fastapi import APIRouter
 from fastapi.testclient import TestClient
 
+from app.entities.unit import UnitCreate
 from app.http import create_app
 from app.observability import http_logger
 
@@ -98,6 +102,7 @@ def test_application_error_log_does_not_expose_exception_secret() -> None:
         def emit(self, record: logging.LogRecord) -> None:
             self.records.append(record.getMessage())
 
+    secret = secrets.token_hex(16)
     handler = CaptureHandler()
     logger = logging.getLogger("inventory.http")
     logger.addHandler(handler)
@@ -105,7 +110,7 @@ def test_application_error_log_does_not_expose_exception_secret() -> None:
     try:
         log_application_error(
             event="unexpected_http_error",
-            exception=RuntimeError("password=synthetic-secret-123"),
+            exception=RuntimeError("password=" + secret),
             request_id="test-request-123",
         )
     finally:
@@ -121,5 +126,109 @@ def test_application_error_log_does_not_expose_exception_secret() -> None:
     assert event["request_id"] == "test-request-123"
     assert "timestamp" in event
 
-    assert "synthetic-secret-123" not in handler.records[0]
+    assert secret not in handler.records[0]
     assert "password=" not in handler.records[0]
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        ("/probe/ok", 200),
+        ("/probe/item/{secret}", 200),
+        ("/probe/missing", 404),
+        ("/api/v1/units/", 422),
+        ("/probe/error", 500),
+    ],
+)
+def test_http_logs_cover_outcomes_without_request_or_exception_secrets(path, expected, caplog):
+    # Маркер генерируется, чтобы сканер не принимал тестовые данные за ключ.
+    secret = secrets.token_urlsafe(24)
+    path = path.replace("{secret}", secret)
+    router = APIRouter()
+
+    @router.get("/probe/ok")
+    def success():
+        return {"status": "ok"}
+
+    @router.get("/probe/item/{value}")
+    def item(value: str):
+        return {"status": "ok"}
+
+    @router.get("/probe/error")
+    def failure():
+        raise RuntimeError(secret)
+
+    @router.post("/units/")
+    def unit(payload: UnitCreate):
+        return payload
+
+    application = create_app([router])
+    # Успех и ошибка проходят тот же middleware, что и API приложения.
+    path = path.replace("/probe/", "/api/v1/probe/")
+    handler, records = capture_http_logs()
+    try:
+        with TestClient(application) as client:
+            response = client.request(
+                "POST" if expected == 422 else "GET",
+                path + "?token=" + secret,
+                headers={
+                    "Authorization": "Bearer " + secret,
+                    "Cookie": "session=" + secret,
+                    "X-Request-ID": secret,
+                },
+                json={"code": secret, "password": secret},
+            )
+    finally:
+        http_logger.removeHandler(handler)
+    assert response.status_code == expected
+    assert secret not in response.text
+    events = [event for event in records if event["event"] == "http_request"]
+    assert len(events) == 1
+    event = events[0]
+    assert set(event) == {
+        "timestamp",
+        "level",
+        "event",
+        "method",
+        "path",
+        "status_code",
+        "duration_ms",
+        "request_id",
+    }
+    assert datetime.fromisoformat(event["timestamp"])
+    assert event["status_code"] == expected
+    assert event["level"] == ("ERROR" if expected == 500 else "INFO")
+    assert event["duration_ms"] >= 0
+    assert str(UUID(event["request_id"])) == response.headers["X-Request-ID"]
+    application_logs = "\n".join(
+        record.getMessage()
+        for record in caplog.records
+        if record.name.startswith(("inventory.", "sqlalchemy.", "uvicorn."))
+    )
+    assert secret not in json.dumps(records) + application_logs
+    if expected == 422:
+        assert response.json()["code"] == "validation_error"
+        assert response.json()["details"][0]["loc"] == ["body", "code"]
+        assert "input" not in response.json()["details"][0]
+        assert "ctx" not in response.json()["details"][0]
+    if expected == 500:
+        errors = [event for event in records if event["event"] == "unexpected_http_error"]
+        assert len(errors) == 1
+        assert errors[0]["request_id"] == event["request_id"]
+
+
+def test_database_debug_does_not_enable_parameter_logging(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from app import postgresql
+
+    postgresql.close_database()
+    create = MagicMock()
+    monkeypatch.setattr(postgresql, "create_engine", create)
+    monkeypatch.setattr(postgresql.settings, "APP_DEBUG", True)
+    try:
+        postgresql.get_engine()
+        assert create.call_args.kwargs["echo"] is False
+        assert create.call_args.kwargs["hide_parameters"] is True
+    finally:
+        postgresql.close_database()

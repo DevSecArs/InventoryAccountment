@@ -2,16 +2,185 @@
 
 ## Компоненты
 
-- Prometheus: http://127.0.0.1:9090
-- Grafana: http://127.0.0.1:3000
-- Node Exporter: внутренний адрес node-exporter:9100
+- Prometheus: http://192.168.56.111:9090
+- Grafana: http://192.168.56.111:3000
+- Node Exporter: адрес Docker bridge на VM, порт 9100
 - Backend: /metrics, /health/live, /health/ready
 - Dashboard Grafana: InventoryAccountment — наблюдаемость
 - Правило Prometheus: BackendUnavailable
 
 Мониторинг запускается отдельным Docker Compose-проектом
-inventory-monitoring. Доступ к веб-интерфейсам ограничен
-адресом 127.0.0.1 виртуальной машины.
+inventory-monitoring. Grafana и Prometheus опубликованы на 0.0.0.0
+(3000 и 9090). При изменении firewall согласуйте доверенные источники доступа;
+опубликованные Docker-порты могут обходить UFW. Реальную внешнюю доступность
+нужно проверять с нужного клиентского узла.
+
+## Первоначальный запуск и выбор окружения
+
+Все команды — Bash на VM 192.168.56.111 из корня этой рабочей копии.
+Dev использует docker-compose.yml, Production — deploy/docker-compose.staging.yml.
+Сначала запустите monitoring: он создаёт внешнюю сеть inventory-observability.
+К ней постоянно подключены только backend приложения и Prometheus/Grafana.
+БД и Nginx остаются в сети своего приложения. При штатном deploy/откате
+используется текущий Compose с постоянными DNS aliases backend-dev/backend-production.
+Старый checkout без этих настроек не обеспечивает мониторинг автоматически.
+
+1. Проверьте место и Docker; запустите registry по README. Не очищайте тома.
+
+```bash
+df -h /
+docker info
+docker compose -f docker-compose.registry.yml up -d
+curl -fsS http://192.168.56.111:5000/v2/
+```
+
+2. Скопируйте все платформы с сохранением проверенного digest (нужен Skopeo).
+При любой ошибке остановитесь. Источники и версии сохранены из исходной реализации.
+
+```bash
+set -euo pipefail
+while read -r source destination; do
+  skopeo copy --all --preserve-digests --dest-tls-verify=false \
+    "docker://$source" "docker://192.168.56.111:5000/$destination"
+done <<'EOF'
+docker.io/prom/prometheus@sha256:49214755b6153f90a597adcbff0252cc61069f8ab69ce8411285cd4a560e8038 prom/prometheus:v3.7.3
+docker.io/grafana/grafana@sha256:70d9599b186ce287be0d2c5ba9a78acb2e86c1a68c9c41449454d0fc3eeb84e8 grafana/grafana:12.3.0
+docker.io/prom/node-exporter@sha256:3ac34ce007accad95afed72149e0d2b927b7e42fd1c866149b945b84737c62c3 prom/node-exporter:v1.10.2
+EOF
+```
+
+Сверьте исходный и локальный манифест через `skopeo inspect --raw` и
+`sha256sum` согласно README. Compose закреплён по этим digest.
+
+3. Сохраните пароль вне Git, не перезаписывая существующий файл.
+
+```bash
+export MONITORING_ENV=dev
+export NODE_EXPORTER_LISTEN_ADDRESS=$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')
+mkdir -p "$HOME/.config/inventory-monitoring"
+chmod 700 "$HOME/.config/inventory-monitoring"
+if [ ! -e "$HOME/.config/inventory-monitoring/grafana.env" ]; then
+  (umask 077; printf 'GRAFANA_ADMIN_PASSWORD=%s\n' "$(openssl rand -hex 24)" > "$HOME/.config/inventory-monitoring/grafana.env")
+fi
+chmod 600 "$HOME/.config/inventory-monitoring/grafana.env"
+docker compose --env-file "$HOME/.config/inventory-monitoring/grafana.env" \
+  -f monitoring/docker-compose.yml config --quiet
+docker compose --env-file "$HOME/.config/inventory-monitoring/grafana.env" \
+  -f monitoring/docker-compose.yml up -d
+```
+
+Node Exporter использует host PID/network и корень VM. Он слушает только
+адрес Docker bridge, доступный Prometheus через host-gateway; порт 9100
+не публикуется на внешнем адресе VM. Сравните MemTotal с `/proc/meminfo`,
+число CPU с `getconf _NPROCESSORS_ONLN`, корневую ФС с `df -B1 /`.
+Панель использует CPU/RAM/корневую ФС VM.
+
+4. Dev поднимайте штатно: `make setup`, `make build`, `make migrate`, `make up`.
+Для Production используйте существующий `deploy/staging-request.sh` от gha-runner
+и только реально зарегистрированный успешный выпуск, как описано в README.
+Не создавайте запись выпуска ради проверки мониторинга.
+
+5. При переключении остановите предыдущее приложение штатно, сохранив тома,
+затем выберите `export MONITORING_ENV=production` (или `dev`) и повторите
+команду monitoring `up -d` выше. Поднимите выбранное приложение его штатным путём.
+Допустимы только dev/production; неверное значение завершает Prometheus ошибкой.
+Том Prometheus сохраняется; label environment различает исторические данные.
+В Grafana выберите то же окружение. Отсутствие невыбранного окружения не вызывает alert.
+Выбранное окружение без двух реплик вызывает BackendUnavailable спустя минуту.
+
+## Ручная приёмка этапа 1
+
+После запуска приложения подождите два scrape-интервала (30 секунд).
+
+```bash
+curl -fsS http://192.168.56.111:9090/-/ready
+curl -fsS http://192.168.56.111:3000/api/health
+curl -fsS http://192.168.56.111:9090/api/v1/targets
+curl -fsSG http://192.168.56.111:9090/api/v1/query \
+  --data-urlencode "query=up{job=\"backend\",environment=\"$MONITORING_ENV\"}"
+curl -fsSG http://192.168.56.111:9090/api/v1/query \
+  --data-urlencode "query=app_readiness{environment=\"$MONITORING_ENV\"}"
+curl -fsS http://192.168.56.111:9090/api/v1/alerts
+```
+
+Ожидаются готовность Prometheus, Grafana database=ok, две backend-цели
+с разными IP/instance, up=1 и app_readiness=1 обеих реплик, node up=1.
+BackendUnavailable не должен быть pending/firing при здоровом приложении.
+При каждом scrape app_readiness заново проверяет БД; доступный /metrics
+с app_readiness=0 вызывает alert независимо от HTTP healthcheck.
+Таймаут соединения с БД и ожидания пула ограничен тремя секундами каждый.
+
+Откройте Grafana, выберите environment; проверьте существующие восемь панелей
+и добавленную корневую ФС VM. При отсутствии трафика p95 может не иметь данных.
+Для предметной метрики в изолированном Dev через реальный API создайте
+поступление (201), затем повторите с пустыми items (422). До и после каждой
+операции сравните сумму inventory_receipts_created_total по обеим репликам:
+успех увеличивает сумму на 1, отказ — на 0. Не используйте рабочую БД.
+Не выдавайте unit-тест с подставным роутером за эту проверку.
+
+Повторяемая API-проверка на созданном тестовом стенде (добавляет черновик).
+Реквизиты тестового администратора находятся вне Git в файле 0600;
+не печатайте его содержимое. Команда выполняется от inv_acc на VM.
+
+```bash
+python3 - <<'PY'
+import http.cookiejar, json, secrets, subprocess, urllib.request, urllib.error
+from pathlib import Path
+op = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+base = 'http://127.0.0.1:8080/api/v1'
+csrf = ''
+def post(path, body, expected):
+    req = urllib.request.Request(base + path, json.dumps(body).encode(),
+        {'Content-Type': 'application/json', 'X-CSRF-Token': csrf})
+    try:
+        r = op.open(req, timeout=10)
+    except urllib.error.HTTPError as error:
+        r = error
+    assert r.code == expected, (path, r.code)
+    return json.load(r)
+credentials = json.loads((Path.home() / '.config/inventory-monitoring/dev-api.json').read_text())
+csrf = post('/auth/login', credentials, 200)['csrf_token']
+def first(path):
+    return json.load(op.open(base + path))['items'][0]['id']
+def count():
+    total = 0
+    for i in (1, 2):
+        text = subprocess.check_output(['docker', 'exec',
+            f'inventory-monitoring-apicheck-backend-{i}',
+            '/opt/app-root/src/.venv/bin/python', '-c',
+            "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/metrics', timeout=10).read().decode())"]).decode()
+        total += float(next(x.split()[1] for x in text.splitlines()
+            if x.startswith('inventory_receipts_created_total ')))
+    return total
+body = {'supplier_id': first('/suppliers/'),
+    'document_number': 'MON-' + secrets.token_hex(6),
+    'received_at': '2026-11-18T20:00:00+00:00',
+    'items': [{'material_id': first('/materials/'), 'quantity': '1.000'}]}
+before = count()
+post('/receipts/', body, 201)
+after = count()
+body['items'] = []
+post('/receipts/', body, 422)
+failed = count()
+assert after == before + 1 and failed == after
+print(before, after, failed, 'OK: 201 -> +1; 422 -> +0')
+PY
+```
+
+Валидация Prometheus после запуска monitoring:
+
+```bash
+docker compose --env-file "$HOME/.config/inventory-monitoring/grafana.env" \
+  -f monitoring/docker-compose.yml exec prometheus \
+  promtool check config /prometheus/active.yml
+docker compose --env-file "$HOME/.config/inventory-monitoring/grafana.env" \
+  -f monitoring/docker-compose.yml exec prometheus \
+  promtool check rules /prometheus/alerts.yml
+```
+
+Ожидается SUCCESS без ошибок. Запуск и проверка конфигурации не подтверждают
+сквозной выпуск или учебный инцидент этапа 3.
 
 ## Проверка мониторинга
 
@@ -20,10 +189,10 @@ inventory-monitoring. Доступ к веб-интерфейсам ограни
     docker compose --env-file "$HOME/.config/inventory-monitoring/grafana.env" \
       -f monitoring/docker-compose.yml ps
 
-    curl -fsS http://127.0.0.1:9090/-/ready
-    curl -fsS http://127.0.0.1:3000/api/health
-    curl -fsS http://127.0.0.1:9090/api/v1/targets
-    curl -fsS http://127.0.0.1:9090/api/v1/alerts
+    curl -fsS http://192.168.56.111:9090/-/ready
+    curl -fsS http://192.168.56.111:3000/api/health
+    curl -fsS http://192.168.56.111:9090/api/v1/targets
+    curl -fsS http://192.168.56.111:9090/api/v1/alerts
 
 ## Диагностика BackendUnavailable
 
@@ -41,8 +210,8 @@ inventory-monitoring. Доступ к веб-интерфейсам ограни
 6. Сопоставить время ошибок с request_id в JSON-журналах.
 7. Проверить изменения после последнего развёртывания.
 
-Не считать отсутствие backend неисправностью мониторинга, если
-staging не развёрнут.
+Отсутствие выбранного окружения является проблемой и должно давать alert.
+Отсутствие невыбранного окружения игнорируется.
 
 ## Восстановление
 
@@ -80,11 +249,328 @@ staging не развёрнут.
 - Отключить стандартные access logs Uvicorn.
 - Не копировать секреты и содержимое staging.env в отчёт.
 
-## Текущее ограничение лабораторной
+## Подтверждённые результаты этапа 1
 
-На 18 ноября 2026 года staging не запущен, каталог состояния CD
-отсутствует, а в Registry нет inventory/backend,
-inventory/frontend и inventory/db. Alert BackendUnavailable
-ожидаемо имеет состояние firing. Полноценную проверку двух реплик
-и восстановления приложения требуется выполнить после
-воспроизводимого развёртывания.
+Проверка после перезапуска VM пользователем, подключение от inv_acc.
+Стенд: /home/inv_acc/inventory-monitoring-stage1, отдельный Compose-проект
+inventory-monitoring-apicheck и тестовая БД. Существующие Dev/staging-тома
+не изменялись. Первоначальный пробный проект inventory-monitoring-devcheck
+остановлен штатным make down; его том сохранён.
+
+- Мониторинг Dev и приложение восстановлены штатными Compose up/make up.
+  Обе backend-цели backend-dev healthy, up=1, app_readiness=1; node up=1.
+  После переключения обратно на Dev активных alerts нет.
+- Переключение Dev -> Production -> Dev после перезапуска VM прошло штатно.
+  Для выбранного Production без подключённых целей подтверждён firing
+  BackendUnavailable с environment=production. История Dev сохранена в томе;
+  метки environment и выбор окружения панели разделяют данные.
+  Реальный выпуск и откат приложения Production не выполнялись.
+- Реальный API через Nginx: повторная команда ручной проверки дала
+  0 -> 1 -> 1; успешный POST поступления 201 увеличил счётчик на 1,
+  неуспешный POST с пустыми items 422 не изменил его.
+- Все три манифеста локального registry сверены по SHA256 с исходными digest.
+- Promtool check config/check rules прошли повторно. Шесть синтетических
+  сценариев (здоровые реплики, отсутствие целей, одна реплика, scrape down,
+  неготовая БД, недоступное невыбранное окружение) прошли повторно.
+- Grafana provisioning: девять панелей, запрос каждой возвращает данные.
+  CPU=6, RAM=5537943552 байт, корневая ФС=46715187200 байт совпали с VM.
+  До перезапуска VM ресурсы были другими; старые значения не выдаются за текущие.
+- Prometheus 9090 и Grafana 3000 доступны с клиентского компьютера: HTTP 200,
+  Grafana database=ok. Оба сервиса слушают 0.0.0.0. Firewall не менялся;
+  при его изменении нужно согласовать доверенные источники доступа.
+- Четыре Docker-теста, три Compose-конфигурации, JSON dashboard и
+  git diff --check прошли повторно. README/AGENTS/TASK не редактировались агентом.
+- Повторные make quality и make container-check прошли (код 0).
+  Отчёты quality: reports/20261118t205644z-16084/.
+- pip-audit в тестовом образе из uv.lock: известных уязвимостей не найдено;
+  локальный пакет inventory-accountment не проверяется по PyPI.
+  В старом Windows-окружении отдельно найдены 17 записей уязвимостей
+  certifi/filelock/msgpack; оно не полностью синхронизировано с lock.
+- Локальный unit-only: 51 passed, один пропуск SIGTERM на Windows,
+  покрытие 50,46% ниже 80%. Полный набор на VM ранее дал 80 passed,
+  покрытие 84,98%, 160/160 уничтоженных мутантов. Исходная SSH-обёртка
+  затем завершилась ошибкой exit; повторный make test завершился кодом 0:
+  80 passed (39,91 с), покрытие 84,98%, уничтожены 160/160 мутантов.
+  Отчёты: reports/20261118t205308z-5824/; журнал reports-stage1-recheck.log.
+
+## Границы и остающиеся риски
+
+Миграции и предметная модель не менялись. Критические изменения: корневой,
+мониторинговый и staging Compose, существующие тесты метрик и Docker.
+Перед слиянием нужны независимое одобрение и предусмотренные проверки.
+Откат кода — возврат изменённых файлов к предыдущей совместимой ревизии;
+тома БД, Prometheus и Grafana сохраняются. Старый Compose без сети не обеспечивает
+мониторинг: для совместимого отката используйте текущую сетевую конфигурацию.
+Не удаляйте inventory-observability при подключённых backend.
+
+Ранее VM испытывала RCU stall/soft lockup нескольких CPU и процессов;
+Docker сообщал об отсутствии exit event и zombie PID Prometheus.
+После перезапуска пользователем восстановление и переключение проверены заново.
+Причина системных зависаний не установлена; init и увеличение таймаута
+не включены как неподтверждённые исправления. Отсутствие повторения при проверке
+не доказывает устранение причины. Агент не перезапускал Docker daemon или VM.
+
+Не выполнялись security/verify с полной Git-историей и Trivy, CI, PR,
+выпуск Production, живой откат и этапы 2–3. Серверная копия передана без .git;
+она не используется как доказательство полного security или релиза.
+При пробном некорректном коде единицы API вернул 500
+(PydanticSerializationError в обработчике валидации). Это наблюдение для этапа 2;
+проверка предметной метрики выполнена с допустимым кодом KG.
+
+## Этап 2: журналы и исправление валидации
+
+Причина найденного HTTP 500: RequestValidationError.errors() содержал
+ValueError в ctx. Обработчик пытался сериализовать его в JSON.
+Теперь ответ 422 содержит только type/loc/msg, без input и ctx.
+Необработанные ошибки преобразуются в 500 на границе HTTP middleware;
+тип ошибки и request_id записываются безопасно, без текста исключения
+и traceback Uvicorn. HTTP-событие записывается один раз, включая метрики.
+Реальный уровень записи для 5xx — ERROR. SQL echo отключён даже при APP_DEBUG,
+параметры SQL скрыты: пароли, сессии и тела не должны попадать в SQL-журнал.
+В HTTP middleware оставлено локальное обоснованное исключение BLE001:
+эта граница обязана обработать неизвестную ошибку без раскрытия traceback.
+Конфигурации анализаторов и пороги не менялись; остальные проверки Ruff работают.
+
+Регрессионный барьер — существующий backend/tests/unit/test_observability.py.
+До исправления новые проверки дали 3 failed / 6 passed: сериализация ошибки,
+повторное выбрасывание исключения с секретом, SQL echo при APP_DEBUG.
+Проверяются успешные запросы, 404, 422, 500, обязательные поля HTTP-события,
+корреляция с X-Request-ID, неизвестный и параметризованный URL, query string,
+Authorization/Cookie, тело, недопустимый request_id и текст исключения.
+Тестовая ошибка 500 не добавляет маршрут в штатное приложение.
+
+Повторная диагностика от inv_acc на VM:
+
+```bash
+cd /home/inv_acc/inventory-monitoring-stage1
+COMPOSE_PROJECT_NAME=inventory-monitoring-apicheck make status
+curl -fsS http://127.0.0.1:8080/health/live
+curl -fsS http://127.0.0.1:9090/api/v1/alerts
+```
+
+Ожидаются здоровые контейнеры, status=ok и пустой список alerts.
+Для повторной проверки исправленного запроса (только тестовый Dev):
+
+```bash
+python3 - <<'PY'
+import http.cookiejar, json, urllib.request, urllib.error
+from pathlib import Path
+op = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+base = 'http://127.0.0.1:8080/api/v1'
+credentials = json.loads((Path.home()/'.config/inventory-monitoring/dev-api.json').read_text())
+r = op.open(urllib.request.Request(base+'/auth/login', json.dumps(credentials).encode(),
+    {'Content-Type':'application/json'}), timeout=10)
+csrf = json.load(r)['csrf_token']
+try:
+    op.open(urllib.request.Request(base+'/units/', b'{"code":"INVALID"}',
+        {'Content-Type':'application/json', 'X-CSRF-Token':csrf}), timeout=10)
+except urllib.error.HTTPError as error:
+    assert error.code == 422
+    body = json.load(error)
+    assert body['code'] == 'validation_error'
+    assert all('ctx' not in x and 'input' not in x for x in body['details'])
+    print(error.code, error.headers['X-Request-ID'], body['code'])
+else:
+    raise AssertionError('Ожидался HTTP 422')
+PY
+```
+
+Ожидается 422, UUID и validation_error. По полученному UUID найдите запись
+http_request следующей командой (подставьте UUID из ответа):
+
+```bash
+COMPOSE_PROJECT_NAME=inventory-monitoring-apicheck docker compose logs --since=5m backend | grep -F UUID_ИЗ_ОТВЕТА
+```
+Для регрессионной проверки всех исходов используйте штатные make test и make quality.
+Восстановление кода: верните совместимую ревизию, выполните make build и make up
+с COMPOSE_PROJECT_NAME=inventory-monitoring-apicheck; том и схема не меняются.
+Учитывайте, что откат возвращает исправленные ошибки и риск утечки SQL-параметров.
+Не очищайте таблицы и тома ради восстановления журналирования.
+
+Фактические живые проверки этапа 2:
+
+- Через Nginx/API подтверждены 200, 404 и исправленный 422, поля JSON и request_id;
+  синтетический секрет не обнаружен в журналах обеих реплик backend.
+- В одноразовом контейнере того же backend-образа настоящий Uvicorn обработал
+  контролируемое исключение: ответ 500, безопасные события http_request и
+  unexpected_http_error, без текста секрета и traceback. БД не использовалась.
+- Контрольный синтетический query-маркер в журнале Nginx не обнаружен;
+  конфигурация Nginx не менялась. Это ограниченная проверка, не гарантия
+  секретности всех внутренних сообщений прокси при любых неисправностях.
+- make quality прошёл, отчёты reports/20261118t221801z-169095/.
+  pip-audit тестового образа из uv.lock: код 0, известных уязвимостей нет;
+  локальный пакет inventory-accountment отсутствует в PyPI и не аудируется.
+
+Это профилактический барьер для реально воспроизведённых дефектов,
+но не завершение пункта 14 целиком: учебный инцидент и изменение процесса
+по его результатам остаются в отложенном этапе 3. CI, PR и человеческая
+приёмка не выполнялись. Критический файл этапа — существующий файл тестов.
+Новых файлов, миграций, сервисов и стека сбора журналов не добавлено.
+
+Итог автоматических проверок этапа 2: make test — код 0, 86 passed (38,79 с),
+покрытие 84,98%, уничтожены 160/160 мутантов; штатная очистка завершена.
+Отчёты: reports/20261118t221629z-164505/, журнал reports-stage2-test.log.
+make quality, make container-check, четыре Docker-теста, три Compose-конфигурации,
+JSON dashboard, promtool check config/check rules и git diff --check прошли.
+Полный security/verify и Trivy не запускались: проверочная копия VM без .git
+не подходит для штатной подготовки исходников и проверки полной истории;
+на локальном компьютере Docker daemon недоступен. CI и релиз не выполнялись.
+Проверка ссылок документации: используются существующие пути/команды;
+команда ручной проверки 422 выполнена дословно и прошла.
+
+## Этап 3: согласованный выпуск и учебный инцидент
+
+Согласовано 19 ноября 2026: выпуск исправления HTTP 500 -> 422 и защиты
+журналов из a396cee вместе с мониторингом 27e6387 через PR в dev.
+Учебный инцидент — остановка только PostgreSQL inventory-monitoring-apicheck.
+Новые исходные файлы не создаются. Данные и staging при инциденте не меняются.
+
+### Исходное состояние выпуска
+
+GitHub API: dev=9011cc9b6200b48e9e5275c106d7dcc76914440e, protected=false.
+На момент начала последний CI run 44366873254 для этого SHA отменён;
+предыдущий 44156770734 завершился failure. Эти прогоны не подтверждают выпуск.
+Workflow запускает проверки только на dev/main; PR не запускает CI.
+Publish и deploy выполняются только после push в dev и успешных needs.
+
+Staging до выпуска: четыре running/healthy контейнера, /version по адресу
+192.168.56.111:8081 вернул 68e29ad73022f1ce92cabd39a0574019e48293f4,
+/health/ready — ok. Порт 8081 привязан к адресу VM, а не к loopback.
+Образы (repository@sha256):
+
+- inventory/backend: 86ae2be977ae6bf7853eb548a23fb450e4de9118ce270d3d3ecf270c334e3a81
+- inventory/frontend: dd4a83f188cf48f1577bb06a5c84bf0f693995f9b896af711ed5331918ca58e4
+- inventory/db: 6e9287c3a626921c4bd8ca3ad6e8c462018cb0673037c67d19a86d1730ef7de1
+
+Registry всех ссылок — 192.168.56.111:5000.
+Исходный профиль 09:16:21 UTC: GET /health/live через staging Nginx,
+20 запросов, concurrency=1, пауза 0,2 с, ошибок=0,
+p50=8,0635 мс, p95 (19-я из 20 отсортированных задержек)=22,89 мс.
+После реального выпуска повторить тот же профиль; результатов после пока нет.
+
+### Фактический инцидент и восстановление
+
+БД Dev остановлена командой Compose stop db 09:08:54 UTC.
+Журнал PostgreSQL подтверждает fast shutdown request и system is shut down
+в 09:08:54.433/09:08:54.774 UTC. В 09:10:21 UTC обе backend-цели имели up=1,
+но app_readiness=0; BackendUnavailable firing для обеих реплик,
+activeAt=09:09:20.77759505 UTC. Поэтому успешный scrape не доказывает готовность БД.
+Причина — недоступность PostgreSQL, а не отказ HTTP-сервера backend.
+
+Compose start db и штатный make up восстановили приложение. PostgreSQL
+ready to accept connections — 09:10:24.047 UTC. В 09:11:05 UTC обе
+app_readiness=1, up=1, alerts пуст. Тома не удалялись и не восстанавливались из дампа.
+Отдельно обнаружено: после reboot stdout backend не обновлялся, последние
+HTTP-события были датированы предыдущим днём. После штатного Compose up
+--force-recreate backend только в тестовом Dev свежие журналы подтверждены
+в 09:16:20 UTC. Причина этой проблемы Docker/журналирования не установлена.
+Не выдаём старые HTTP-журналы за свидетельство текущего инцидента;
+причина подтверждена свежим lifecycle-журналом PostgreSQL и метриками.
+
+После инцидента в существующий test_prometheus_metrics.py добавлен тест
+реального обработчика SQL OperationalError: /metrics остаётся 200,
+app_readiness падает до 0, /health/ready возвращает 503; после восстановления
+соединения readiness возвращается к 1. Негативный контроль (ошибочная readiness,
+всегда возвращающая True, только в памяти отдельного процесса) провалил этот тест.
+Это новый проверенный профилактический барьер по наблюдавшемуся отказу.
+
+### Проверки безопасности и реальные барьеры
+
+Передача полной Git-истории в эту VM выполнена только после отдельного явного
+разрешения пользователя. В Linux-копии нормализованы окончания строк CRLF -> LF
+для штатных shell-команд, рабочий .env не копировался и не перезаписывался.
+Полный make security действительно выполнен. Повторный результат:
+gitleaks-source SUCCESS, gitleaks-history FINDINGS, код 1.
+Отчёты reports/20261119t091518z-29509/security/.
+История содержит две generic-api-key находки в тестовых синтетических маркерах:
+коммиты efe9d944c8df0c4d0952c54e05ec3f087bc85c2a и
+a396cee7fd2e116cb57a8e5287c425cd83f3adee, test_observability.py.
+В текущих фикстурах маркеры теперь генерируются; проверка утечек сохранена.
+История не переписывалась, исключения сканера и пороги не менялись.
+До согласованного решения по историческим ложным срабатываниям security
+остаётся блокирующим результатом, а не успешной проверкой.
+
+CODEOWNERS и шаблон PR есть, но GitHub сообщает protected=false для dev.
+Обязательное независимое review требуется правилами репозитория, однако
+техническая блокировка слияния защитой dev сейчас не подтверждается.
+Автор PR использует DevSecArs и не может сам дать независимое одобрение;
+при совпадении автора и критического CODEOWNER нужно решение владельца процесса.
+Автоматическая проверка named approval не подключена. Настройки защиты не менялись.
+Настоящие автоматические барьеры доставки — needs publish/deploy, реальные
+ошибки тестов/сканеров, проверки digest и версии. Они не заменяют защиту слияния:
+при текущем workflow CI начинается только после попадания изменения в dev.
+
+Слияние, выпуск и итоговое сравнение до/после пока не выполнялись.
+Нельзя считать пункты 11–12 завершёнными по этому runbook или локальной сборке.
+
+Проверки профилактического изменения: 15 затронутых unit-тестов прошли;
+отрицательный контроль ошибочной readiness дал ожидаемый FAIL нового теста.
+make quality — код 0, reports/20261119t091738z-34794/.
+Полный make test завершился кодом 0: 87 passed (51,49 с), покрытие 84,98%,
+уничтожены 160/160 мутантов, штатная очистка завершена.
+Отчёты reports/20261119t091506z-28762/, журнал reports-stage3-test.log.
+
+Ручное повторение согласованного инцидента только на тестовом Dev:
+
+```bash
+cd /home/inv_acc/inventory-monitoring-stage1
+dev() { docker compose --project-name inventory-monitoring-apicheck -f docker-compose.yml "$@"; }
+trap 'dev start db; COMPOSE_PROJECT_NAME=inventory-monitoring-apicheck make up' EXIT
+dev stop db
+sleep 90
+curl -fsSG http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=up{job="backend",environment="dev"}'
+curl -fsSG http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=app_readiness{environment="dev"}'
+curl -fsS http://127.0.0.1:9090/api/v1/alerts
+dev start db
+COMPOSE_PROJECT_NAME=inventory-monitoring-apicheck make up
+trap - EXIT
+sleep 35
+curl -fsS http://127.0.0.1:9090/api/v1/alerts
+```
+
+Ожидается: при отказе up=1, readiness=0 и firing для Dev; после запуска
+БД readiness=1 и alerts пуст. Проверьте свежие события в журнале db
+(received fast shutdown request / ready to accept connections).
+Команды не выполняют down --volumes, миграцию или откат данных.
+
+### Точечные исторические исключения для review PR #13
+
+По явной команде пользователя подготовлены исключения только двух
+исторических синтетических маркеров. Они проверяются в security_policy.py
+только для отдельного режима gitleaks-history. Должны совпасть полный
+fingerprint, commit, File, RuleID, StartLine и EndLine:
+
+- a396cee7fd2e116cb57a8e5287c425cd83f3adee:backend/tests/unit/test_observability.py:generic-api-key:142
+- efe9d944c8df0c4d0952c54e05ec3f087bc85c2a:backend/tests/unit/test_observability.py:generic-api-key:108
+
+Сканер по-прежнему читает всю историю, его исходный JSON с обеими находками
+сохраняется без удаления записей. Только классификация этих точных находок
+получает отдельный статус SUCCESS_WITH_EXCEPTIONS, а не чистый SUCCESS.
+Любая дополнительная находка блокирует проверку. На сканирование текущих
+исходников исключения не распространяются. Ошибки/неполные отчёты сканера
+остаются ERROR. Правила Gitleaks, severity Trivy и пороги не менялись.
+
+Проверены пять unit-тестов политики, тест изоляции workspace, shell-тест
+сбоя Docker и полный поведенческий shell-набор. В частности, точная находка
+допускается только в истории, тот же отчёт в исходниках даёт FINDINGS;
+изменение любого поля/добавление новой находки/ошибка сканера блокируют результат.
+Полный make security: код 0, gitleaks-history SUCCESS_WITH_EXCEPTIONS,
+gitleaks-source SUCCESS; исходный отчёт сохранён в
+reports/20261119t093439z-81023/security/.
+
+Критические изменения этого дополнения: scripts/security.sh,
+scripts/security_policy.py, tests/docker/test_security_policy.py и
+существующий tests/docker/test_security_behavior.sh. Они требуют review.
+Условие сохранения исключений — неизменность этих двух коммитов/мест и
+подтверждённая синтетическая природа; расширять исключения на файл, правило,
+другие коммиты или текущие исходники нельзя. Откат — возврат этих файлов:
+исторические находки снова заблокируют make security, данные не затрагиваются.
+
+PR: https://github.com/DevSecArs/InventoryAccountment/pull/13 (draft).
+Пользователь сообщил, что выполнит разрешение PR самостоятельно.
+Агент не выполняет merge и не выдаёт самостоятельное слияние автора DevSecArs
+за независимое GitHub Review. Независимое review пока не подтверждено.
+Изменения защиты веток не выполнялись. После слияния нужно проверить реальный
+CI, publication/deploy, SHA/digest и повторить исходный профиль нагрузки;
+пункты 11–12 до этого остаются частично выполненными.

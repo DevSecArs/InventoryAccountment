@@ -100,7 +100,7 @@ if [ "$history_ok" -eq 1 ]; then
   docker run --rm -v "$work/history.git:/repo:ro" -v "$report:/report" \
     "$gitleaks_image" git /repo --log-opts=--all --redact=100 \
     --report-format json --report-path /report/gitleaks-history.json --no-banner > "$report/gitleaks-history.log" 2>&1 || code=$?
-  classify gitleaks-history gitleaks "$code" "$report/gitleaks-history.json"
+  classify gitleaks-history gitleaks-history "$code" "$report/gitleaks-history.json"
 else result gitleaks-history 'NOT RUN'; fi
 if [ "$source_ok" -eq 1 ]; then
   code=0

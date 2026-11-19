@@ -2,10 +2,11 @@ groups:
   - name: inventory
     rules:
       - alert: BackendUnavailable
-        expr: absent(up{job="backend"}) or up{job="backend"} == 0
+        expr: absent(up{job="backend",environment="MONITORING_ENV"}) or count(up{job="backend",environment="MONITORING_ENV"}) < 2 or up{job="backend",environment="MONITORING_ENV"} == 0 or app_readiness{job="backend",environment="MONITORING_ENV"} == 0
         for: 1m
         labels:
           severity: warning
+          environment: MONITORING_ENV
         annotations:
           summary: "Backend недоступен"
-          description: "Prometheus не обнаруживает backend или не может получить его метрики."
+          description: "Не обнаружены две реплики выбранного окружения, недоступны метрики или PostgreSQL."

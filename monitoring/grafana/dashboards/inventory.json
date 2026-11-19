@@ -27,8 +27,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(up{job=\"backend\"}) or vector(0)",
-          "legendFormat": "Доступные реплики backend"
+          "expr": "sum(up{job=\"backend\",environment=\"$environment\"}) or vector(0)",
+          "legendFormat": "Доступные реплики backend ($environment)"
         }
       ],
       "fieldConfig": {
@@ -56,8 +56,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "min(app_readiness{job=\"backend\"})",
-          "legendFormat": "Готовность приложения"
+          "expr": "min(app_readiness{job=\"backend\",environment=\"$environment\"})",
+          "legendFormat": "Готовность приложения ($environment)"
         }
       ],
       "fieldConfig": {
@@ -85,8 +85,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_requests_total{job=\"backend\",route!=\"/metrics\"}[5m])) or vector(0)",
-          "legendFormat": "HTTP-запросы в секунду"
+          "expr": "sum(rate(http_requests_total{job=\"backend\",environment=\"$environment\",route!=\"/metrics\"}[5m])) or vector(0)",
+          "legendFormat": "HTTP-запросы в секунду ($environment)"
         }
       ],
       "fieldConfig": {
@@ -114,8 +114,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_requests_total{job=\"backend\",status_code=~\"5..\"}[5m])) or vector(0)",
-          "legendFormat": "Ошибки HTTP 5xx в секунду"
+          "expr": "sum(rate(http_requests_total{job=\"backend\",environment=\"$environment\",status_code=~\"5..\"}[5m])) or vector(0)",
+          "legendFormat": "Ошибки HTTP 5xx в секунду ($environment)"
         }
       ],
       "fieldConfig": {
@@ -143,8 +143,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"backend\"}[5m])))",
-          "legendFormat": "Время ответа p95"
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"backend\",environment=\"$environment\"}[5m])))",
+          "legendFormat": "Время ответа p95 ($environment)"
         }
       ],
       "fieldConfig": {
@@ -230,8 +230,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(increase(inventory_receipts_created_total{job=\"backend\"}[1h])) or vector(0)",
-          "legendFormat": "Созданные поступления за час"
+          "expr": "sum(increase(inventory_receipts_created_total{job=\"backend\",environment=\"$environment\"}[1h])) or vector(0)",
+          "legendFormat": "Созданные поступления за час ($environment)"
         }
       ],
       "fieldConfig": {
@@ -241,6 +241,61 @@
         "overrides": []
       },
       "options": {}
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Использование корневой ФС VM",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (1 - node_filesystem_avail_bytes{job=\"node\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{job=\"node\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})",
+          "legendFormat": "Использование корневой ФС VM"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {}
     }
-  ]
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "environment",
+        "label": "Окружение",
+        "type": "custom",
+        "query": "dev,production",
+        "current": {
+          "text": "dev",
+          "value": "dev"
+        },
+        "options": [
+          {
+            "text": "dev",
+            "value": "dev",
+            "selected": true
+          },
+          {
+            "text": "production",
+            "value": "production",
+            "selected": false
+          }
+        ]
+      }
+    ]
+  }
 }

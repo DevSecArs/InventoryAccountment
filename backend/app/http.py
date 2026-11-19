@@ -27,7 +27,12 @@ from app.entities.routers import (
     supplier_router,
     unit_router,
 )
-from app.observability import log_application_error, log_http_request, observe_http_request
+from app.observability import (
+    APP_READINESS,
+    log_application_error,
+    log_http_request,
+    observe_http_request,
+)
 from app.postgresql import close_database, is_database_ready, session_scope
 
 logger = logging.getLogger(__name__)
@@ -112,6 +117,7 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
 
     @application.get("/metrics", include_in_schema=False)
     def metrics() -> Response:
+        APP_READINESS.set(1 if is_database_ready() else 0)
         return Response(
             content=generate_latest(),
             media_type=CONTENT_TYPE_LATEST,
@@ -127,19 +133,19 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
         started = perf_counter()
         try:
             response = await call_next(request)
-        except Exception:
-            duration_ms = (perf_counter() - started) * 1000
-            log_http_request(
-                request,
-                status_code=500,
-                duration_ms=duration_ms,
+        # На границе HTTP скрываем traceback с возможными секретами.
+        except Exception as exception:  # noqa: BLE001
+            log_application_error(
+                event="unexpected_http_error",
+                exception=exception,
+                request_id=request.state.request_id,
             )
-            observe_http_request(
+            response = _error_response(
                 request,
-                status_code=500,
-                duration_ms=duration_ms,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                code="internal_error",
+                message="Внутренняя ошибка сервера",
             )
-            raise
 
         duration_ms = (perf_counter() - started) * 1000
         log_http_request(
@@ -164,7 +170,10 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             code="validation_error",
             message="Переданы некорректные данные",
-            details=exception.errors(),
+            # Входные значения и ctx могут содержать секреты и объекты исключений.
+            details=[
+                {key: error[key] for key in ("type", "loc", "msg")} for error in exception.errors()
+            ],
         )
 
     @application.exception_handler(HTTPException)
@@ -179,22 +188,6 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
             message=message,
             details=details,
         )
-
-    @application.exception_handler(Exception)
-    async def unexpected_error_handler(request: Request, exception: Exception) -> JSONResponse:
-        log_application_error(
-            event="unexpected_http_error",
-            exception=exception,
-            request_id=_get_request_id(request),
-        )
-        response = _error_response(
-            request,
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            code="internal_error",
-            message="Внутренняя ошибка сервера",
-        )
-        response.headers[REQUEST_ID_HEADER] = _get_request_id(request)
-        return _add_instance_id(response)
 
     @application.get(
         "/health/live",
@@ -213,7 +206,9 @@ def create_app(entity_routers: Iterable[APIRouter] = ()) -> FastAPI:
         summary="Проверить готовность приложения и PostgreSQL",
     )
     def readiness() -> HealthResponse:
-        if not is_database_ready():
+        ready = is_database_ready()
+        APP_READINESS.set(1 if ready else 0)
+        if not ready:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="PostgreSQL недоступна",

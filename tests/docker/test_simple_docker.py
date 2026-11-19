@@ -34,6 +34,11 @@ class SimpleDockerTests(unittest.TestCase):
     def test_backend_replicas_and_nginx_routing(self) -> None:
         self.assertEqual(self.services["backend"]["deploy"]["replicas"], 2)
         self.assertNotIn("container_name", self.services["backend"])
+        self.assertEqual(
+            self.services["backend"]["networks"]["observability"]["aliases"], ["backend-dev"]
+        )
+        for name in ("db", "nginx"):
+            self.assertNotIn("observability", self.services[name]["networks"])
         self.assertNotIn("frontend", self.services)
         nginx = self.services["nginx"]
         self.assertEqual(nginx["build"]["target"], "nginx")

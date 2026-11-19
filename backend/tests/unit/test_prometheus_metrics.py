@@ -1,11 +1,17 @@
 """Проверки метрик Prometheus."""
 
+import pytest
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 from prometheus_client import REGISTRY
 
 from app import http
 from app.http import create_app
+
+
+@pytest.fixture(autouse=True)
+def ready_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(http, "is_database_ready", lambda: True)
 
 
 def metric_value(name: str, labels: dict[str, str] | None = None) -> float:
@@ -44,6 +50,14 @@ def test_readiness_metric_reflects_database_status(monkeypatch) -> None:
     assert client.get("/health/ready").status_code == 200
     assert metric_value("app_readiness") == 1
 
+    # Scrape должен проверять БД заново без обращения к healthcheck.
+    monkeypatch.setattr(http, "is_database_ready", lambda: False)
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert "app_readiness 0.0" in response.text
+    monkeypatch.setattr(http, "is_database_ready", lambda: True)
+    assert "app_readiness 1.0" in client.get("/metrics").text
+
 
 def test_receipts_counter_counts_successful_creation_only() -> None:
     router = APIRouter(prefix="/receipts")
@@ -73,3 +87,29 @@ def test_secret_does_not_appear_in_metrics() -> None:
     metrics = client.get("/metrics")
     assert metrics.status_code == 200
     assert secret not in metrics.text
+
+
+def test_database_connection_failure_is_visible_when_metrics_remain_available(monkeypatch) -> None:
+    """Отказ БД не должен скрываться за успешным scrape HTTP-метрик."""
+    from unittest.mock import MagicMock
+
+    from sqlalchemy.exc import OperationalError
+
+    from app import postgresql
+
+    engine = MagicMock()
+    engine.connect.side_effect = OperationalError(
+        "SELECT 1", {}, RuntimeError("connection refused")
+    )
+    monkeypatch.setattr(postgresql, "get_engine", lambda: engine)
+    monkeypatch.setattr(http, "is_database_ready", postgresql.is_database_ready)
+    client = TestClient(create_app())
+
+    metrics = client.get("/metrics")
+    assert metrics.status_code == 200
+    assert "app_readiness 0.0" in metrics.text
+    assert client.get("/health/ready").status_code == 503
+
+    engine.connect.side_effect = None
+    assert "app_readiness 1.0" in client.get("/metrics").text
+    assert client.get("/health/ready").status_code == 200

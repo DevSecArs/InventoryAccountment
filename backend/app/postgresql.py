@@ -35,7 +35,10 @@ def get_engine() -> Engine:
     return create_engine(
         settings.DATABASE_URL,
         pool_pre_ping=True,
-        echo=settings.APP_DEBUG,
+        pool_timeout=3,
+        connect_args={"connect_timeout": 3},
+        echo=False,
+        hide_parameters=True,
     )
 
 
